@@ -68,11 +68,3 @@ Once the bot is running, it will listen for messages in all the servers it has b
 ## Customization
 
 Modify the `.env` file to change environmental settings such as the Discord bot token, maximum message history, and Google Cloud configurations. The code itself can be customized to alter the bot's behavior, command prefixes, and more.
-
-## Contributing
-
-Contributions are welcome! Please feel free to fork the repository, make changes, and submit pull requests.
-
-## License
-
-Specify the license under which the bot is released, or state that it is open source.
