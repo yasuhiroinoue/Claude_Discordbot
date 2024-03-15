@@ -45,7 +45,7 @@ Claude Bot is a sophisticated Discord bot that leverages Google Cloud's VertexAI
    Create a `.env` file in the root directory of the project and populate it with the necessary environment variables:
 
    ```
-   DISCORD_BOT_TOKEN3=<Your Discord Bot Token>
+   DISCORD_BOT_TOKEN=<Your Discord Bot Token>
    MAX_HISTORY=<Maximum Number of Messages to Remember>
    GCP_REGION=<Google Cloud Platform Region>
    GCP_PROJECT_ID=<Your GCP Project ID>
