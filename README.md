@@ -74,4 +74,4 @@ Modify the `.env` file to change environmental settings such as the Discord bot 
 Contributions are welcome! Please feel free to fork the repository, make changes, and submit pull requests.
 
 ## Acknowledgments
-This project was inspired by and references concepts from the Echoshard/Gemini_Discordbot. 
+This project was inspired by and references concepts from the [Echoshard/Gemini_Discordbot](https://github.com/Echoshard/Gemini_Discordbot/tree/main). 
