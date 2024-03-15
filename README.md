@@ -58,7 +58,7 @@ Claude Bot is a sophisticated Discord bot that leverages Google Cloud's VertexAI
    With the setup complete, you can start the bot using:
 
    ```bash
-   python bot.py
+   python ClaudeDiscordBot.py
    ```
 
 ## Usage
