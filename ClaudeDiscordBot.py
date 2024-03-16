@@ -11,7 +11,7 @@ import base64
 
 # Load environment variables
 load_dotenv()
-DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
+DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN2")
 MAX_HISTORY = int(os.getenv("MAX_HISTORY", "0"))  # Default to 0 if not set
 GCP_REGION = os.getenv("GCP_REGION")
 GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID")
@@ -75,7 +75,7 @@ async def process_attachments(message, cleaned_text):
                     resized_image_data = resized_image_stream.getvalue()
                     encoded_image_data = base64.b64encode(resized_image_data).decode("utf-8")
                     response_text = await generate_response_with_image_and_text(encoded_image_data, cleaned_text, mime_type)
-                    update_message_history(message.author.id, response_text, "system")
+                    update_message_history(message.author.id, response_text, "assistant")
                     await split_and_send_messages(message, response_text, 1700)
         else:
             supported_extensions = ', '.join(ext_to_mime.keys())
@@ -95,7 +95,7 @@ async def process_text_message(message, cleaned_text):
     update_message_history(message.author.id, cleaned_text, "user")
     formatted_history = get_formatted_message_history(message.author.id)
     response_text = await generate_response_with_text(formatted_history)
-    update_message_history(message.author.id, response_text, "system")
+    update_message_history(message.author.id, response_text, "assistant")
     await split_and_send_messages(message, response_text, 1700)
 
 async def generate_response_with_text(message_text):
