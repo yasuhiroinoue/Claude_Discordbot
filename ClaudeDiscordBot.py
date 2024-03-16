@@ -69,12 +69,13 @@ async def process_attachments(message, cleaned_text):
                         response_text = await generate_response_with_image_and_text(encoded_image_data, cleaned_text, mime_type)
                         await split_and_send_messages(message, response_text, 1700)
                         return
-                    update_message_history(message.author.id, cleaned_text, "user")
+                    update_message_history(message.author.id, cleaned_text, "user")    
+                    formatted_history = get_formatted_message_history(message.author.id)
                     image_data = await resp.read()
                     resized_image_stream = resize_image_if_needed(image_data, file_extension)
                     resized_image_data = resized_image_stream.getvalue()
                     encoded_image_data = base64.b64encode(resized_image_data).decode("utf-8")
-                    response_text = await generate_response_with_image_and_text(encoded_image_data, cleaned_text, mime_type)
+                    response_text = await generate_response_with_image_and_text(encoded_image_data, formatted_history, mime_type)
                     update_message_history(message.author.id, response_text, "assistant")
                     await split_and_send_messages(message, response_text, 1700)
         else:
@@ -120,17 +121,45 @@ async def generate_response_with_image_and_text(image_data, text, mime_type):
     )
     return answer.content[0].text
 
+
 def update_message_history(user_id, text, message_type):
-    prefixed_message = f"{message_type}: {text}"
+    # prefixed_message = f"{message_type}: {text}"
+    # Construct the new message as a dictionary
+    new_message = {'role': message_type, 'content': [text]}
     if user_id in message_history:
-        message_history[user_id].append(prefixed_message)
+        message_history[user_id].append(new_message)
         if len(message_history[user_id]) > MAX_HISTORY:
             message_history[user_id].pop(0)
     else:
-        message_history[user_id] = [prefixed_message]
+        message_history[user_id] = [new_message]
 
 def get_formatted_message_history(user_id):
-    return '\n\n'.join(message_history.get(user_id, ["No messages found for this user."]))
+    # Check if the user has any messages
+    if user_id not in message_history or not message_history[user_id]:
+        return "No messages found for this user."
+    
+    # Format each message in the history
+    formatted_messages = []
+    for message in message_history[user_id]:
+        role = message['role']
+        text = " ".join(message['content'])  # Assuming 'parts' is a list of strings
+        formatted_message = f"{role}: {text}"
+        formatted_messages.append(formatted_message)
+    
+    # Join the formatted messages with double newlines
+    return '\n\n'.join(formatted_messages)
+
+# def update_message_history(user_id, text, message_type):
+#     prefixed_message = f"{message_type}: {text}"
+#     if user_id in message_history:
+#         message_history[user_id].append(prefixed_message)
+#         if len(message_history[user_id]) > MAX_HISTORY:
+#             message_history[user_id].pop(0)
+#     else:
+#         message_history[user_id] = [prefixed_message]
+
+# def get_formatted_message_history(user_id):
+#     return '\n\n'.join(message_history.get(user_id, ["No messages found for this user."]))
 
 def clean_discord_message(input_string):
     bracket_pattern = re.compile(r'<[^>]+>')
