@@ -142,7 +142,7 @@ def get_formatted_message_history(user_id):
     formatted_messages = []
     for message in message_history[user_id]:
         role = message['role']
-        text = " ".join(message['content'])  # Assuming 'parts' is a list of strings
+        text = " ".join(message['content'])  # Assuming 'content' is a list of strings
         formatted_message = f"{role}: {text}"
         formatted_messages.append(formatted_message)
     
