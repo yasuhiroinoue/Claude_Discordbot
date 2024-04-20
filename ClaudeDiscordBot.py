@@ -12,10 +12,11 @@ import base64
 # Load environment variables
 load_dotenv()
 DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
-MAX_HISTORY = int(os.getenv("MAX_HISTORY", "0"))  # Default to 0 if not set
 GCP_REGION = os.getenv("GCP_REGION")
 GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID")
 
+# The history is counted by the number of pairs of exchanges between the user and the assistant.
+MAX_HISTORY = 2*int(os.getenv("MAX_HISTORY", "0"))  # Default to 0 if not set
 
 # Initialize Anthropi API
 anthropic = AsyncAnthropicVertex(region=GCP_REGION, project_id=GCP_PROJECT_ID)
@@ -84,10 +85,6 @@ async def process_text_message(message, cleaned_text):
         return
 
     await message.add_reaction('💬')
-    if MAX_HISTORY == 0:
-        response_text = await generate_response_with_text(cleaned_text)
-        await split_and_send_messages(message, response_text, 1700)
-        return
     update_message_history(message.author.id, cleaned_text, "user")
     formatted_history = get_formatted_message_history(message.author.id)
     response_text = await generate_response_with_text(formatted_history)
@@ -124,8 +121,10 @@ def update_message_history(user_id, text, message_type):
     new_message = {'role': message_type, 'content': [text]}
     if user_id in message_history:
         message_history[user_id].append(new_message)
-        if len(message_history[user_id]) > MAX_HISTORY:
+        if message_type == 'assistant' and len(message_history[user_id]) > MAX_HISTORY:
             message_history[user_id].pop(0)
+            if len(message_history[user_id]) > 0:
+                message_history[user_id].pop(0)
     else:
         message_history[user_id] = [new_message]
 
