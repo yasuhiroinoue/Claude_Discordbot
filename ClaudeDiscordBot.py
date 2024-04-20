@@ -11,7 +11,7 @@ import base64
 
 # Load environment variables
 load_dotenv()
-DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
+DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN2")
 MAX_HISTORY = int(os.getenv("MAX_HISTORY", "0"))  # Default to 0 if not set
 GCP_REGION = os.getenv("GCP_REGION")
 GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID")
@@ -19,8 +19,8 @@ GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID")
 
 # Initialize Anthropi API
 anthropic = AsyncAnthropicVertex(region=GCP_REGION, project_id=GCP_PROJECT_ID)
-LLM_MODEL = "claude-3-sonnet@20240229"
-MAX_TOKEN = 1024
+LLM_MODEL = "claude-3-opus@20240229"
+MAX_TOKEN = 4096
 
 # Initialize Discord bot
 bot = commands.Bot(command_prefix="!", intents=discord.Intents.default())
@@ -61,33 +61,28 @@ async def process_attachments(message, cleaned_text):
                     if resp.status != 200:
                         await message.channel.send('Unable to download the image.')
                         return
-                    if MAX_HISTORY == 0:
-                        image_data = await resp.read()
-                        resized_image_stream = resize_image_if_needed(image_data, file_extension)
-                        resized_image_data = resized_image_stream.getvalue()
-                        encoded_image_data = base64.b64encode(resized_image_data).decode("utf-8")
-                        response_text = await generate_response_with_image_and_text(encoded_image_data, cleaned_text, mime_type)
-                        await split_and_send_messages(message, response_text, 1700)
-                        return
-                    update_message_history(message.author.id, cleaned_text, "user")    
-                    formatted_history = get_formatted_message_history(message.author.id)
+                    # if MAX_HISTORY == 0:
+                    #  The image is not saved in the history.
                     image_data = await resp.read()
                     resized_image_stream = resize_image_if_needed(image_data, file_extension)
                     resized_image_data = resized_image_stream.getvalue()
                     encoded_image_data = base64.b64encode(resized_image_data).decode("utf-8")
-                    response_text = await generate_response_with_image_and_text(encoded_image_data, formatted_history, mime_type)
-                    update_message_history(message.author.id, response_text, "assistant")
+                    response_text = await generate_response_with_image_and_text(encoded_image_data, cleaned_text, mime_type)
                     await split_and_send_messages(message, response_text, 1700)
+                    return
         else:
             supported_extensions = ', '.join(ext_to_mime.keys())
             await message.channel.send(f"🗑️ Unsupported file extension. Supported extensions are: {supported_extensions}")
 
+
 async def process_text_message(message, cleaned_text):
     print(f"New Message FROM: {message.author.id}: {cleaned_text}")
-    if "RESET" in cleaned_text.upper():
+    # Use a regex to find 'RESET' as a whole word, case-insensitively
+    if re.search(r'\bRESET\b', cleaned_text):
         message_history.pop(message.author.id, None)
         await message.channel.send(f"🧹 History Reset for user: {message.author.name}")
         return
+
     await message.add_reaction('💬')
     if MAX_HISTORY == 0:
         response_text = await generate_response_with_text(cleaned_text)
@@ -103,8 +98,9 @@ async def generate_response_with_text(message_text):
     answer = await anthropic.messages.create(
         model=LLM_MODEL,
         max_tokens=MAX_TOKEN,
-        messages=[{"role": "user", "content": message_text}]
+        messages = message_text
     )
+    
     return answer.content[0].text
 
 async def generate_response_with_image_and_text(image_data, text, mime_type):
@@ -142,24 +138,10 @@ def get_formatted_message_history(user_id):
     formatted_messages = []
     for message in message_history[user_id]:
         role = message['role']
-        text = " ".join(message['content'])  # Assuming 'content' is a list of strings
-        formatted_message = f"{role}: {text}"
-        formatted_messages.append(formatted_message)
-    
-    # Join the formatted messages with double newlines
-    return '\n\n'.join(formatted_messages)
-
-# def update_message_history(user_id, text, message_type):
-#     prefixed_message = f"{message_type}: {text}"
-#     if user_id in message_history:
-#         message_history[user_id].append(prefixed_message)
-#         if len(message_history[user_id]) > MAX_HISTORY:
-#             message_history[user_id].pop(0)
-#     else:
-#         message_history[user_id] = [prefixed_message]
-
-# def get_formatted_message_history(user_id):
-#     return '\n\n'.join(message_history.get(user_id, ["No messages found for this user."]))
+        content = " ".join(message['content'])
+        formatted_messages.append({"role": role, "content": content})
+        
+    return formatted_messages
 
 def clean_discord_message(input_string):
     bracket_pattern = re.compile(r'<[^>]+>')
