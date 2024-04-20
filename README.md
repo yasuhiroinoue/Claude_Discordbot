@@ -46,11 +46,12 @@ Claude Bot is a sophisticated Discord bot that leverages Google Cloud's VertexAI
 
    ```
    DISCORD_BOT_TOKEN=<Your Discord Bot Token>
-   MAX_HISTORY=<Maximum Number of Messages to Remember>
+   MAX_HISTORY=<Maximum Number of Exchanges to Remember>
    GCP_REGION=<Google Cloud Platform Region>
    GCP_PROJECT_ID=<Your GCP Project ID>
    ```
-
+   
+   The history is counted by the number of pairs of exchanges between the user and the assistant.
    Replace the placeholders with your actual information.
 
 4. **Run the Bot**
