@@ -50,7 +50,7 @@ async def on_message(message):
                 await process_text_message(message, cleaned_text)
 
 async def process_attachments(message, cleaned_text):
-    print(f"New Image Message FROM: {message.author.id}: {cleaned_text}")
+    # print(f"New Image Message FROM: {message.author.id}: {cleaned_text}")
     for attachment in message.attachments:
         file_extension = os.path.splitext(attachment.filename.lower())[1]
         ext_to_mime = {'.png': "image/png", '.jpg': "image/jpeg", '.jpeg': "image/jpeg", '.gif': "image/gif", '.webp': "image/webp"}
@@ -77,7 +77,7 @@ async def process_attachments(message, cleaned_text):
 
 
 async def process_text_message(message, cleaned_text):
-    print(f"New Message FROM: {message.author.id}: {cleaned_text}")
+    # print(f"New Message FROM: {message.author.id}: {cleaned_text}")
     # Use a regex to find 'RESET' as a whole word, case-insensitively
     if re.search(r'\bRESET\b', cleaned_text):
         message_history.pop(message.author.id, None)
