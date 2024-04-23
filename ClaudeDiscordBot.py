@@ -11,7 +11,7 @@ import base64
 
 # Load environment variables
 load_dotenv()
-DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN2")
+DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 GCP_REGION = os.getenv("GCP_REGION")
 GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID")
 
@@ -82,7 +82,8 @@ async def process_attachments(message, cleaned_text):
 async def process_text_message(message, cleaned_text):
     # print(f"New Message FROM: {message.author.id}: {cleaned_text}")
     # Use a regex to find 'RESET' as a whole word, case-insensitively
-    if re.search(r'\bRESET\b', cleaned_text):
+    # Match only if the message is exactly "RESET"
+    if re.search(r'^RESET$', cleaned_text, re.IGNORECASE):
         message_history.pop(message.author.id, None)
         await message.channel.send(f"🧹 History Reset for user: {message.author.name}")
         return
@@ -162,8 +163,43 @@ def resize_image_if_needed(image_bytes, file_extension, max_size_mb=1, step=10):
     return img_stream
 
 async def split_and_send_messages(message_system, text, max_length):
-    for i in range(0, len(text), max_length):
-        await message_system.channel.send(text[i:i+max_length])
+    """
+    Splits the given text into chunks that respect word boundaries and sends them
+    using the provided message system. Chunks are up to max_length characters long.
+
+    :param message_system: An object representing the Discord messaging system,
+                           assumed to have a `channel.send` method for sending messages.
+    :param text: The text to be sent.
+    :param max_length: The maximum length of each message chunk.
+    """
+    start = 0
+    while start < len(text):
+        # If remaining text is within the max_length, send it as one chunk.
+        if len(text) - start <= max_length:
+            await message_system.channel.send(text[start:])
+            break
+
+        # Find the last whitespace character before the max_length limit.
+        end = start + max_length
+        while end > start and text[end-1] not in ' \n\r\t':
+            end -= 1
+
+        # If no suitable whitespace is found, force break at max_length.
+        if end == start:
+            end = start + max_length
+
+        # Send the text from start to end.
+        await message_system.channel.send(text[start:end].strip())
+        
+        # Update start position for next iteration to continue after the last whitespace.
+        start = end
+
+# This call should remain commented out as per instructions.
+# split_and_send_messages(some_message_system, "Your very long message here")
+
+# async def split_and_send_messages(message_system, text, max_length):
+#     for i in range(0, len(text), max_length):
+#         await message_system.channel.send(text[i:i+max_length])
 
 # Run the bot
 bot.run(DISCORD_BOT_TOKEN)
