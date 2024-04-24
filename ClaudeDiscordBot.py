@@ -11,7 +11,7 @@ import base64
 
 # Load environment variables
 load_dotenv()
-DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
+DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN2")
 GCP_REGION = os.getenv("GCP_REGION")
 GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID")
 
@@ -120,6 +120,7 @@ async def generate_response_with_image_and_text(image_data, text, mime_type):
 
 
 def update_message_history(user_id, text, message_type):
+    global message_history
     # prefixed_message = f"{message_type}: {text}"
     # Construct the new message as a dictionary
     new_message = {'role': message_type, 'content': [text]}
