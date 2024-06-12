@@ -101,4 +101,4 @@ Contributions are welcome! Please feel free to fork the repository, make changes
 
 ## License
 
-Specify the license under which the bot is released, or state that it is open source.
+This project is licensed under the MIT License.
