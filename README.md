@@ -1,3 +1,4 @@
+
 # Discord bot with Claude-3 using Google Cloud VertexAI
 
 Claude Bot is a sophisticated Discord bot that leverages Google Cloud's VertexAI and the Claude-3 language model to interact with users through text and image responses. It's designed to enhance Discord servers by providing intelligent and contextual interactions.
@@ -6,8 +7,33 @@ Claude Bot is a sophisticated Discord bot that leverages Google Cloud's VertexAI
 
 - **Advanced Text Processing**: Utilizes Claude-3, a powerful language model, for generating meaningful text responses.
 - **Image Recognition**: Can analyze and respond to images sent by users.
+- **Supports Multiple Programming Languages**: Can process various programming language source code files and provide relevant responses.
 - **Environmentally Friendly**: Uses environment variables for secure configuration.
 - **Customizable and Scalable**: Easy to adjust settings and scale for different use cases.
+
+## Supported File Extensions
+
+The bot now supports a wide range of text-based file formats, including but not limited to:
+- Text files: `.txt`
+- Markdown files: `.md`
+- CSV files: `.csv`
+- JSON files: `.json`
+- XML files: `.xml`
+- HTML files: `.html`
+- Configuration files: `.ini`, `.log`, `.yaml`, `.yml`
+- Source code files:
+  - C: `.c`, `.h`
+  - C++: `.cpp`, `.hpp`
+  - Python: `.py`
+  - Rust: `.rs`
+  - JavaScript: `.js`
+  - C#: `.cs`
+  - PHP: `.php`
+  - Ruby: `.rb`
+  - Perl: `.pl`, `.pm`
+  - Swift: `.swift`
+  - R: `.R`, `.r`
+  - Go: `.go`
 
 ## Prerequisites
 
@@ -22,8 +48,8 @@ Claude Bot is a sophisticated Discord bot that leverages Google Cloud's VertexAI
    Start by cloning the repository to your local machine:
 
    ```bash
-   git clone https://github.com/yasuhiroinoue/Claude_Discordbot.git
-   cd Claude_Discordbot
+   git clone <repository-url>
+   cd <repository-directory>
    ```
 
 2. **Install Required Packages**
@@ -46,12 +72,11 @@ Claude Bot is a sophisticated Discord bot that leverages Google Cloud's VertexAI
 
    ```
    DISCORD_BOT_TOKEN=<Your Discord Bot Token>
-   MAX_HISTORY=<Maximum Number of Exchanges to Remember>
+   MAX_HISTORY=<Maximum Number of Messages to Remember>
    GCP_REGION=<Google Cloud Platform Region>
    GCP_PROJECT_ID=<Your GCP Project ID>
    ```
-   
-   The history is counted by the number of pairs of exchanges between the user and the assistant.
+
    Replace the placeholders with your actual information.
 
 4. **Run the Bot**
@@ -74,5 +99,6 @@ Modify the `.env` file to change environmental settings such as the Discord bot 
 
 Contributions are welcome! Please feel free to fork the repository, make changes, and submit pull requests.
 
-## Acknowledgments
-This project was inspired by and references concepts from the [Echoshard/Gemini_Discordbot](https://github.com/Echoshard/Gemini_Discordbot/tree/main). 
+## License
+
+Specify the license under which the bot is released, or state that it is open source.
