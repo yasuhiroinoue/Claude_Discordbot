@@ -11,7 +11,7 @@ import base64
 
 # Load environment variables
 load_dotenv()
-DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
+DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN2")
 GCP_REGION = os.getenv("GCP_REGION")
 GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID")
 
@@ -23,7 +23,7 @@ MAX_DISCORD_LENGTH = 2000
 
 # Initialize Anthropi API
 anthropic = AsyncAnthropicVertex(region=GCP_REGION, project_id=GCP_PROJECT_ID)
-LLM_MODEL = "claude-3-opus@20240229"
+LLM_MODEL = os.getenv("MODEL")
 MAX_TOKEN = 4096
 
 # Initialize Discord bot
@@ -202,7 +202,7 @@ def resize_image_if_needed(image_bytes, file_extension, max_size_mb=1, step=10):
     img = Image.open(img_stream)
     while img_stream.getbuffer().nbytes > max_size_mb * 1024 * 1024:
         width, height = img.size
-        img = img.resize((int(width * (100 - step) / 100), int(height * (100 - step) / 100)), Image.ANTIALIAS)
+        img = img.resize((int(width * (100 - step) / 100), int(height * (100 - step) / 100)), Image.Resampling.LANCZOS)
         img_stream = io.BytesIO()
         img.save(img_stream, format=img_format)
     return img_stream
