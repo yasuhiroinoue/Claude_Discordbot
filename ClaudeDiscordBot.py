@@ -8,6 +8,7 @@ from anthropic import AsyncAnthropicVertex
 from PIL import Image
 import io
 import base64
+import datetime
 
 # Load environment variables
 load_dotenv()
@@ -47,13 +48,20 @@ async def on_message(message):
 
     if bot.user.mentioned_in(message) or isinstance(message.channel, discord.DMChannel):
         cleaned_text = clean_discord_message(message.content)
+        
+        # Check for !save command
+        save_to_file = False
+        if cleaned_text.startswith("!save "):
+            save_to_file = True
+            cleaned_text = cleaned_text.replace("!save ", "", 1)
+        
         async with message.channel.typing():
             if message.attachments:
-                await process_attachments(message, cleaned_text)
+                await process_attachments(message, cleaned_text, save_to_file)
             else:
-                await process_text_message(message, cleaned_text)
+                await process_text_message(message, cleaned_text, save_to_file)
 
-async def process_attachments(message, cleaned_text):
+async def process_attachments(message, cleaned_text, save_to_file=False):
     # 画像やその他の添付ファイルを処理
     for attachment in message.attachments:
         file_extension = os.path.splitext(attachment.filename.lower())[1]
@@ -114,7 +122,10 @@ async def process_attachments(message, cleaned_text):
                         # Add AI response to history
                         update_message_history(message.author.id, response_text, "assistant")
                         
-                        await split_and_send_messages(message, response_text, MAX_DISCORD_LENGTH)
+                        if save_to_file:
+                            await save_response_as_file(message, response_text)
+                        else:
+                            await split_and_send_messages(message, response_text, MAX_DISCORD_LENGTH)
                         return
             else:
                 await message.add_reaction('📄')
@@ -125,13 +136,13 @@ async def process_attachments(message, cleaned_text):
                             return
                         text_data = await resp.text()
                         combined_text = f"{cleaned_text}\n{text_data}" if cleaned_text else text_data
-                        await process_text_message(message, combined_text)
+                        await process_text_message(message, combined_text, save_to_file)
                         return
         else:
             supported_extensions = ', '.join(ext_to_mime.keys())
             await message.channel.send(f"🗑️ Unsupported file extension. Supported extensions are: {supported_extensions}")
 
-async def process_text_message(message, cleaned_text):
+async def process_text_message(message, cleaned_text, save_to_file=False):
     # テキストメッセージの処理
     if re.search(r'^RESET$', cleaned_text, re.IGNORECASE):
         message_history.pop(message.author.id, None)
@@ -143,7 +154,34 @@ async def process_text_message(message, cleaned_text):
     formatted_history = get_formatted_message_history(message.author.id)
     response_text = await generate_response_with_text(formatted_history)
     update_message_history(message.author.id, response_text, "assistant")
-    await split_and_send_messages(message, response_text, MAX_DISCORD_LENGTH)
+    
+    if save_to_file:
+        await save_response_as_file(message, response_text)
+    else:
+        await split_and_send_messages(message, response_text, MAX_DISCORD_LENGTH)
+
+async def save_response_as_file(message, response_text):
+    """
+    Saves the response as a text file and sends it to the Discord channel.
+    """
+    # Generate a filename with timestamp
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"claude_response_{timestamp}.md"
+    
+    # Create a file object with the response text
+    file = discord.File(io.StringIO(response_text), filename=filename)
+    
+    # Send a message with the file attached
+    await message.channel.send(f"💾 Here's your response as a file:", file=file)
+    
+    # Send a preview of first few lines (optional)
+    preview_lines = response_text.split('\n')[:5]  # First 5 lines
+    preview = '\n'.join(preview_lines)
+    if len(preview_lines) >= 5:
+        preview += "\n..."
+    
+    if preview.strip():  # Only send preview if there's content
+        await message.channel.send(f"📝 Preview:\n```\n{preview}\n```")
 
 def extract_response(answer):
     data = answer.model_dump()
