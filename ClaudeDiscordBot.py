@@ -11,7 +11,7 @@ import base64
 
 # Load environment variables
 load_dotenv()
-DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN2")
+DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 GCP_REGION = os.getenv("GCP_REGION")
 GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID")
 
@@ -24,7 +24,8 @@ MAX_DISCORD_LENGTH = 2000
 # Initialize Anthropi API
 anthropic = AsyncAnthropicVertex(region=GCP_REGION, project_id=GCP_PROJECT_ID)
 LLM_MODEL = os.getenv("MODEL")
-MAX_TOKEN = 4096
+MAX_TOKEN = 8192
+MAX_TOKEN_THINKING_BUDGET = 4096
 
 # Initialize Discord bot
 bot = commands.Bot(command_prefix="!", intents=discord.Intents.default())
@@ -139,19 +140,32 @@ async def process_text_message(message, cleaned_text):
     update_message_history(message.author.id, response_text, "assistant")
     await split_and_send_messages(message, response_text, MAX_DISCORD_LENGTH)
 
+def extract_response(answer):
+    data = answer.model_dump()
+    texts = [item.get("text") for item in data["content"] if item.get("type") == "text"]
+    return "\n".join(texts)
+
 async def generate_response_with_text(message_text):
     answer = await anthropic.messages.create(
         model=LLM_MODEL,
         max_tokens=MAX_TOKEN,
-        messages = message_text
+        thinking={
+            "type": "enabled",
+            "budget_tokens": MAX_TOKEN_THINKING_BUDGET
+        },
+        messages = message_text,
     )
     
-    return answer.content[0].text
+    return extract_response(answer)
 
 async def generate_response_with_image_and_text(image_data, text, mime_type):
     answer = await anthropic.messages.create(
         model=LLM_MODEL,
         max_tokens=MAX_TOKEN,
+        thinking={
+            "type": "enabled",
+            "budget_tokens": MAX_TOKEN_THINKING_BUDGET
+        },
         messages=[{
             "role": "user",
             "content": [
@@ -160,7 +174,7 @@ async def generate_response_with_image_and_text(image_data, text, mime_type):
             ]
         }]
     )
-    return answer.content[0].text
+    return extract_response(answer)
 
 
 def update_message_history(user_id, text, message_type):
@@ -202,7 +216,7 @@ def resize_image_if_needed(image_bytes, file_extension, max_size_mb=1, step=10):
     img = Image.open(img_stream)
     while img_stream.getbuffer().nbytes > max_size_mb * 1024 * 1024:
         width, height = img.size
-        img = img.resize((int(width * (100 - step) / 100), int(height * (100 - step) / 100)), Image.Resampling.LANCZOS)
+        img = img.resize((int(width * (100 - step) / 100), int(height * (100 - step) / 100)), Image.ANTIALIAS)
         img_stream = io.BytesIO()
         img.save(img_stream, format=img_format)
     return img_stream
