@@ -16,7 +16,7 @@ GCP_REGION = os.getenv("GCP_REGION")
 GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID")
 
 # The history is counted by the number of pairs of exchanges between the user and the assistant.
-MAX_HISTORY = 2*int(os.getenv("MAX_HISTORY", "0"))  # Default to 0 if not set
+MAX_HISTORY = 2 * int(os.getenv("MAX_HISTORY", "0"))  # Default to 0 if not set
 
 # The maximum number of characters per Discord message
 MAX_DISCORD_LENGTH = 2000
@@ -24,8 +24,8 @@ MAX_DISCORD_LENGTH = 2000
 # Initialize Anthropi API
 anthropic = AsyncAnthropicVertex(region=GCP_REGION, project_id=GCP_PROJECT_ID)
 LLM_MODEL = os.getenv("MODEL")
-MAX_TOKEN = 8192
-MAX_TOKEN_THINKING_BUDGET = 4096
+MAX_TOKEN = 16384
+MAX_TOKEN_THINKING_BUDGET = 8192
 
 # Initialize Discord bot
 bot = commands.Bot(command_prefix="!", intents=discord.Intents.default())
@@ -54,10 +54,9 @@ async def on_message(message):
                 await process_text_message(message, cleaned_text)
 
 async def process_attachments(message, cleaned_text):
-    # print(f"New Image Message FROM: {message.author.id}: {cleaned_text}")
+    # 画像やその他の添付ファイルを処理
     for attachment in message.attachments:
         file_extension = os.path.splitext(attachment.filename.lower())[1]
-        # ext_to_mime = {'.png': "image/png", '.jpg': "image/jpeg", '.jpeg': "image/jpeg", '.gif': "image/gif", '.webp': "image/webp"}
         ext_to_mime = {
             '.png': "image/png", 
             '.jpg': "image/jpeg", 
@@ -104,7 +103,17 @@ async def process_attachments(message, cleaned_text):
                         resized_image_stream = resize_image_if_needed(image_data, file_extension)
                         resized_image_data = resized_image_stream.getvalue()
                         encoded_image_data = base64.b64encode(resized_image_data).decode("utf-8")
-                        response_text = await generate_response_with_image_and_text(encoded_image_data, cleaned_text, mime_type)
+                        
+                        # 画像付きユーザー発言を履歴に追加
+                        update_message_history_with_image(message.author.id, cleaned_text, encoded_image_data, mime_type)
+                        
+                        # 会話履歴全体を取得してLLMに渡す
+                        formatted_history = get_formatted_message_history(message.author.id)
+                        response_text = await generate_response_with_image_and_text(formatted_history)
+                        
+                        # Add AI response to history
+                        update_message_history(message.author.id, response_text, "assistant")
+                        
                         await split_and_send_messages(message, response_text, MAX_DISCORD_LENGTH)
                         return
             else:
@@ -115,7 +124,6 @@ async def process_attachments(message, cleaned_text):
                             await message.channel.send('Unable to download the text file.')
                             return
                         text_data = await resp.text()
-                        # cleaned_textが空でない場合のみテキストに追加
                         combined_text = f"{cleaned_text}\n{text_data}" if cleaned_text else text_data
                         await process_text_message(message, combined_text)
                         return
@@ -123,11 +131,8 @@ async def process_attachments(message, cleaned_text):
             supported_extensions = ', '.join(ext_to_mime.keys())
             await message.channel.send(f"🗑️ Unsupported file extension. Supported extensions are: {supported_extensions}")
 
-
 async def process_text_message(message, cleaned_text):
-    # print(f"New Message FROM: {message.author.id}: {cleaned_text}")
-    # Use a regex to find 'RESET' as a whole word, case-insensitively
-    # Match only if the message is exactly "RESET"
+    # テキストメッセージの処理
     if re.search(r'^RESET$', cleaned_text, re.IGNORECASE):
         message_history.pop(message.author.id, None)
         await message.channel.send(f"🧹 History Reset for user: {message.author.name}")
@@ -153,12 +158,11 @@ async def generate_response_with_text(message_text):
             "type": "enabled",
             "budget_tokens": MAX_TOKEN_THINKING_BUDGET
         },
-        messages = message_text,
+        messages=message_text,
     )
-    
     return extract_response(answer)
 
-async def generate_response_with_image_and_text(image_data, text, mime_type):
+async def generate_response_with_image_and_text(formatted_history):
     answer = await anthropic.messages.create(
         model=LLM_MODEL,
         max_tokens=MAX_TOKEN,
@@ -166,22 +170,15 @@ async def generate_response_with_image_and_text(image_data, text, mime_type):
             "type": "enabled",
             "budget_tokens": MAX_TOKEN_THINKING_BUDGET
         },
-        messages=[{
-            "role": "user",
-            "content": [
-                {"type": "text", "text": text if text else 'What is this a picture of?'},
-                {"type": "image", "source": {"type": "base64", "media_type": mime_type, "data": image_data}}
-            ]
-        }]
+        messages=formatted_history,  # 履歴全体をそのまま渡す
     )
     return extract_response(answer)
 
 
 def update_message_history(user_id, text, message_type):
     global message_history
-    # prefixed_message = f"{message_type}: {text}"
-    # Construct the new message as a dictionary
-    new_message = {'role': message_type, 'content': [text]}
+    # テキストのみの場合はリストではなく文字列として保存
+    new_message = {'role': message_type, 'content': text}
     if user_id in message_history:
         message_history[user_id].append(new_message)
         if message_type == 'assistant' and len(message_history[user_id]) > MAX_HISTORY:
@@ -191,74 +188,82 @@ def update_message_history(user_id, text, message_type):
     else:
         message_history[user_id] = [new_message]
 
+def update_message_history_with_image(user_id, text, image_data, mime_type):
+    global message_history
+    # 画像＋テキストの複合コンテンツを作成
+    content = [
+        {"type": "text", "text": text if text else 'What is this a picture of?'},
+        {"type": "image", "source": {"type": "base64", "media_type": mime_type, "data": image_data}}
+    ]
+    new_message = {'role': 'user', 'content': content}
+    if user_id in message_history:
+        message_history[user_id].append(new_message)
+        if len(message_history[user_id]) > MAX_HISTORY:
+            message_history[user_id].pop(0)
+            if len(message_history[user_id]) > 0:
+                message_history[user_id].pop(0)
+    else:
+        message_history[user_id] = [new_message]
+
 def get_formatted_message_history(user_id):
-    # Check if the user has any messages
+    # 履歴が存在しない場合のチェック
     if user_id not in message_history or not message_history[user_id]:
         return "No messages found for this user."
     
-    # Format each message in the history
+    # 履歴は既に画像・テキストの複合形式になっているのでそのまま返す
     formatted_messages = []
     for message in message_history[user_id]:
         role = message['role']
-        content = " ".join(message['content'])
+        content = message['content']
         formatted_messages.append({"role": role, "content": content})
-        
     return formatted_messages
 
 def clean_discord_message(input_string):
     bracket_pattern = re.compile(r'<[^>]+>')
     return bracket_pattern.sub('', input_string)
 
+
 def resize_image_if_needed(image_bytes, file_extension, max_size_mb=1, step=10):
     format_map = {'.png': 'PNG', '.jpg': 'JPEG', '.jpeg': 'JPEG', '.gif': 'GIF', '.webp': 'WEBP'}
     img_format = format_map.get(file_extension.lower(), 'JPEG')
     img_stream = io.BytesIO(image_bytes)
     img = Image.open(img_stream)
+    try:
+        resample_filter = Image.Resampling.LANCZOS
+    except AttributeError:
+        resample_filter = Image.ANTIALIAS  # 古いバージョンの Pillow 用
+
     while img_stream.getbuffer().nbytes > max_size_mb * 1024 * 1024:
         width, height = img.size
-        img = img.resize((int(width * (100 - step) / 100), int(height * (100 - step) / 100)), Image.ANTIALIAS)
+        img = img.resize(
+            (int(width * (100 - step) / 100), int(height * (100 - step) / 100)),
+            resample_filter
+        )
         img_stream = io.BytesIO()
         img.save(img_stream, format=img_format)
     return img_stream
 
+
 async def split_and_send_messages(message_system, text, max_length):
     """
     Splits the given text into chunks that respect word boundaries and sends them
-    using the provided message system. Chunks are up to max_length characters long.
-
-    :param message_system: An object representing the Discord messaging system,
-                           assumed to have a `channel.send` method for sending messages.
-    :param text: The text to be sent.
-    :param max_length: The maximum length of each message chunk.
+    using the provided message system.
     """
     start = 0
     while start < len(text):
-        # If remaining text is within the max_length, send it as one chunk.
         if len(text) - start <= max_length:
             await message_system.channel.send(text[start:])
             break
 
-        # Find the last whitespace character before the max_length limit.
         end = start + max_length
         while end > start and text[end-1] not in ' \n\r\t':
             end -= 1
 
-        # If no suitable whitespace is found, force break at max_length.
         if end == start:
             end = start + max_length
 
-        # Send the text from start to end.
         await message_system.channel.send(text[start:end].strip())
-        
-        # Update start position for next iteration to continue after the last whitespace.
         start = end
-
-# This call should remain commented out as per instructions.
-# split_and_send_messages(some_message_system, "Your very long message here")
-
-# async def split_and_send_messages(message_system, text, max_length):
-#     for i in range(0, len(text), max_length):
-#         await message_system.channel.send(text[i:i+max_length])
 
 # Run the bot
 bot.run(DISCORD_BOT_TOKEN)
