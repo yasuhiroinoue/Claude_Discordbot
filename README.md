@@ -1,95 +1,108 @@
+# Discord bot with Claude-3.7 (Thinking) using Google Cloud VertexAI
 
-# Discord bot with Claude-3 using Google Cloud VertexAI
-
-Claude Bot is a sophisticated Discord bot that leverages Google Cloud's VertexAI and the Claude-3 language model to interact with users through text and image responses. It's designed to enhance Discord servers by providing intelligent and contextual interactions.
+Claude Bot is a sophisticated Discord bot that leverages Google Cloud's VertexAI and the Claude-3 language model to interact with users through text, image, and PDF responses. It's designed to enhance Discord servers by providing intelligent and contextual interactions.
 
 ## Features
 
 - **Advanced Text Processing**: Utilizes Claude-3, a powerful language model, for generating meaningful text responses.
 - **Image Recognition**: Can analyze and respond to images sent by users.
+- **PDF Processing**: Newly added capability to process and understand PDF documents.
 - **Supports Multiple Programming Languages**: Can process various programming language source code files and provide relevant responses.
 - **Environmentally Friendly**: Uses environment variables for secure configuration.
 - **Customizable and Scalable**: Easy to adjust settings and scale for different use cases.
+- **Conversation History**: Remembers previous interactions (configurable length) to provide context-aware responses.
+- **Save Responses**: Users can save the bot's responses as text files directly in Discord using the `!save` command.
 
 ## Supported File Extensions
 
-The bot now supports a wide range of text-based file formats, including but not limited to:
-- Text files: `.txt`
-- Markdown files: `.md`
-- CSV files: `.csv`
-- JSON files: `.json`
-- XML files: `.xml`
-- HTML files: `.html`
-- Configuration files: `.ini`, `.log`, `.yaml`, `.yml`
-- Source code files:
-  - C: `.c`, `.h`
-  - C++: `.cpp`, `.hpp`
-  - Python: `.py`
-  - Rust: `.rs`
-  - JavaScript: `.js`
-  - C#: `.cs`
-  - PHP: `.php`
-  - Ruby: `.rb`
-  - Perl: `.pl`, `.pm`
-  - Swift: `.swift`
-  - R: `.R`, `.r`
-  - Go: `.go`
+The bot supports a wide range of file formats, including:
+
+-   Image files: `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`
+-   PDF files: `.pdf`
+-   Text files: `.txt`
+-   Markdown files: `.md`
+-   CSV files: `.csv`
+-   JSON files: `.json`
+-   XML files: `.xml`
+-   HTML files: `.html`
+-   Configuration files: `.ini`, `.log`, `.yaml`, `.yml`
+-   Source code files:
+    -   C: `.c`, `.h`
+    -   C++: `.cpp`, `.hpp`
+    -   Python: `.py`
+    -   Rust: `.rs`
+    -   JavaScript: `.js`
+    -   C#: `.cs`
+    -   PHP: `.php`
+    -   Ruby: `.rb`
+    -   Perl: `.pl`, `.pm`
+    -   Swift: `.swift`
+    -   R: `.R`, `.r`
+    -   Go: `.go`
 
 ## Prerequisites
 
-- Python 3.8 or newer.
-- A Google Cloud account and project setup for VertexAI.
-- A Discord bot token.
+-   Python 3.8 or newer.
+-   A Google Cloud account and project setup for VertexAI.
+-   A Discord bot token.
 
 ## Installation
 
-1. **Clone the Repository**
+1.  **Clone the Repository**
 
-   Start by cloning the repository to your local machine:
+    Start by cloning the repository to your local machine:
 
-   ```bash
-   git clone <repository-url>
-   cd <repository-directory>
-   ```
+    ```bash
+    git clone <repository-url>
+    cd <repository-directory>
+    ```
 
-2. **Install Required Packages**
+2.  **Install Required Packages**
 
-   Install the Python dependencies listed in `requirements.txt`:
+    Install the Python dependencies listed in `requirements.txt`:
 
-   ```bash
-   pip install -r requirements.txt
-   ```
+    ```bash
+    pip install -r requirements.txt
+    ```
 
-   Additionally, install the `anthropic[vertex]` package for VertexAI integration:
+    Additionally, install the `anthropic[vertex]` package for VertexAI integration:
 
-   ```bash
-   python -m pip install -U 'anthropic[vertex]'
-   ```
+    ```bash
+    python -m pip install -U 'anthropic[vertex]'
+    ```
 
-3. **Configure Environment Variables**
+3.  **Configure Environment Variables**
 
-   Create a `.env` file in the root directory of the project and populate it with the necessary environment variables:
+    Create a `.env` file in the root directory of the project and populate it with the necessary environment variables:
 
-   ```
-   DISCORD_BOT_TOKEN=<Your Discord Bot Token>
-   MAX_HISTORY=<Maximum Number of Messages to Remember>
-   GCP_REGION=<Google Cloud Platform Region>
-   GCP_PROJECT_ID=<Your GCP Project ID>
-   ```
+    ```
+    DISCORD_BOT_TOKEN=<Your Discord Bot Token>
+    MAX_HISTORY=<Maximum Number of Message Pairs to Remember>
+    GCP_REGION=<Google Cloud Platform Region>
+    GCP_PROJECT_ID=<Your GCP Project ID>
+    MODEL=<The model name of VertexAI>
+    ```
 
-   Replace the placeholders with your actual information.
+    Replace the placeholders with your actual information.  `MAX_HISTORY` refers to the number of *pairs* of user/assistant messages to store.  `MODEL` is the name of the Vertex AI model to use (e.g., `gemini-1.5-pro-002`).
 
-4. **Run the Bot**
+4.  **Run the Bot**
 
-   With the setup complete, you can start the bot using:
+    With the setup complete, you can start the bot using:
 
-   ```bash
-   python ClaudeDiscordBot.py
-   ```
+    ```bash
+    python ClaudeDiscordBot.py
+    ```
 
 ## Usage
 
-Once the bot is running, it will listen for messages in all the servers it has been added to. Users can interact with the bot by mentioning it in a message or sending a direct message. The bot can process both text and images, providing responses generated by Claude-3.
+Once the bot is running, it will listen for messages in all the servers it has been added to. Users can interact with the bot by:
+
+-   Mentioning the bot in a message (`@BotName`).
+-   Sending a direct message (DM) to the bot.
+-   Uploading supported file types (images, PDFs, text-based files).
+- Using the `!save` command at the beginning of message.
+
+The bot can process both text and images, and now PDFs, providing responses generated by Claude-3. You can reset the conversation history by sending `RESET` (case-insensitive) to the bot.
 
 ## Customization
 
