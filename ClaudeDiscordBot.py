@@ -153,92 +153,68 @@ async def generate_response(message_text):
     return "\n".join(item.get("text") for item in answer.model_dump()["content"] if item.get("type") == "text")
 
 
-async def process_image_attachment(message, attachment, cleaned_text, save_to_file):
-    """Processes image attachments."""
-    file_extension = os.path.splitext(attachment.filename.lower())[1]
-    mime_type = ext_to_mime[file_extension]
-    async with aiohttp.ClientSession() as session:
-        async with session.get(attachment.url) as resp:
-            if resp.status != 200:
-                await message.channel.send('Unable to download the image.')
-                return
-            image_data = await resp.read()
-    resized_image_stream = resize_image(image_data, file_extension)
-    encoded_image_data = base64.b64encode(resized_image_stream.getvalue()).decode("utf-8")
-
-    content = [
-        {"type": "text", "text": cleaned_text if cleaned_text else 'What is this a picture of?'},
-        {"type": "image", "source": {"type": "base64", "media_type": mime_type, "data": encoded_image_data}}
-    ]
-    update_history(message.author.id, content, 'user')
-    formatted_history = get_history(message.author.id)
-    response_text = await generate_response(formatted_history)
-    update_history(message.author.id, response_text, "assistant")
-
+async def send_response(message, response_text, save_to_file):
+    """Common logic for sending responses"""
     if save_to_file:
         await save_response_as_file_and_send(message, response_text)
     else:
         await send_long_message(message, response_text, MAX_DISCORD_LENGTH)
 
-async def process_pdf_attachment(message, attachment, cleaned_text, save_to_file):
 
-    file_extension = os.path.splitext(attachment.filename.lower())[1]
-    mime_type = ext_to_mime[file_extension]
+async def download_attachment(attachment):
+    """Common logic for downloading attachments"""
     async with aiohttp.ClientSession() as session:
         async with session.get(attachment.url) as resp:
             if resp.status != 200:
-                await message.channel.send('Unable to download the pdf.')
-                return
-            pdf_data = await resp.read()
-    encoded_pdf_data = base64.b64encode(pdf_data).decode("utf-8")
+                return None
+            return await resp.read()
 
-    content = [
-        {"type": "text", "text": cleaned_text if cleaned_text else 'Explain this pdf'},
-        {"type": "document", "source": {"type": "base64", "media_type": mime_type, "data": encoded_pdf_data}}
-    ]
+
+async def process_attachment(message, attachment, cleaned_text, save_to_file):
+    """Process different types of attachments with a unified approach"""
+    file_extension = os.path.splitext(attachment.filename.lower())[1]
+    mime_type = ext_to_mime.get(file_extension)
+    
+    if not mime_type:
+        supported_extensions = ', '.join(ext_to_mime.keys())
+        await message.channel.send(f"🗑️ Unsupported file extension. Supported extensions are: {supported_extensions}")
+        return
+    
+    file_data = await download_attachment(attachment)
+    if file_data is None:
+        await message.channel.send(f'Unable to download the file: {attachment.filename}')
+        return
+    
+    # Type-specific processing
+    if file_extension in ['.png', '.jpg', '.jpeg', '.gif', '.webp']:
+        await message.add_reaction('🎨')
+        resized_image_stream = resize_image(file_data, file_extension)
+        encoded_data = base64.b64encode(resized_image_stream.getvalue()).decode("utf-8")
+        content = [
+            {"type": "text", "text": cleaned_text if cleaned_text else 'What is this a picture of?'},
+            {"type": "image", "source": {"type": "base64", "media_type": mime_type, "data": encoded_data}}
+        ]
+    elif file_extension in ['.pdf']:
+        await message.add_reaction('📄')
+        encoded_data = base64.b64encode(file_data).decode("utf-8")
+        content = [
+            {"type": "text", "text": cleaned_text if cleaned_text else 'Explain this pdf'},
+            {"type": "document", "source": {"type": "base64", "media_type": mime_type, "data": encoded_data}}
+        ]
+    else:
+        await message.add_reaction('📄')
+        text_data = file_data.decode('utf-8', errors='replace')
+        combined_text = f"{cleaned_text}\n{text_data}" if cleaned_text else text_data
+        await process_text(message, combined_text, save_to_file)
+        return
+    
+    # Common processing for image and PDF files
     update_history(message.author.id, content, 'user')
     formatted_history = get_history(message.author.id)
     response_text = await generate_response(formatted_history)
     update_history(message.author.id, response_text, "assistant")
+    await send_response(message, response_text, save_to_file)
 
-    if save_to_file:
-        await save_response_as_file_and_send(message, response_text)
-    else:
-        await send_long_message(message, response_text, MAX_DISCORD_LENGTH)
-
-async def process_other_attachment(message, attachment, cleaned_text, save_to_file):
-    async with aiohttp.ClientSession() as session:
-        async with session.get(attachment.url) as resp:
-            if resp.status != 200:
-                await message.channel.send('Unable to download the text file.')
-                return
-            text_data = await resp.text()
-
-    combined_text = f"{cleaned_text}\n{text_data}" if cleaned_text else text_data
-    await process_text(message, combined_text, save_to_file)
-
-async def process_attachments(message, cleaned_text, save_to_file=False):
-    """Handles message attachments."""
-    for attachment in message.attachments:
-        file_extension = os.path.splitext(attachment.filename.lower())[1]
-
-        if file_extension not in ext_to_mime:
-            supported_extensions = ', '.join(ext_to_mime.keys())
-            await message.channel.send(f"🗑️ Unsupported file extension. Supported extensions are: {supported_extensions}")
-            continue
-
-        if file_extension in ['.png', '.jpg', '.jpeg', '.gif', '.webp']:
-            await message.add_reaction('🎨')
-            await process_image_attachment(message, attachment, cleaned_text, save_to_file)
-            return
-        elif file_extension in ['.pdf']:
-            await message.add_reaction('📄')
-            await process_pdf_attachment(message, attachment, cleaned_text, save_to_file)
-            return
-        else:
-            await message.add_reaction('📄')
-            await process_other_attachment(message, attachment, cleaned_text, save_to_file)
-            return
 
 async def process_text(message, cleaned_text, save_to_file=False):
     """Processes text messages."""
@@ -252,11 +228,7 @@ async def process_text(message, cleaned_text, save_to_file=False):
     formatted_history = get_history(message.author.id)
     response_text = await generate_response(formatted_history)
     update_history(message.author.id, response_text, "assistant")
-
-    if save_to_file:
-        await save_response_as_file_and_send(message, response_text)
-    else:
-        await send_long_message(message, response_text, MAX_DISCORD_LENGTH)
+    await send_response(message, response_text, save_to_file)
 
 
 @bot.event
@@ -282,7 +254,9 @@ async def on_message(message):
 
         async with message.channel.typing():
             if message.attachments:
-                await process_attachments(message, cleaned_text, save_to_file)
+                for attachment in message.attachments:
+                    await process_attachment(message, attachment, cleaned_text, save_to_file)
+                    break  # Process only the first attachment
             else:
                 await process_text(message, cleaned_text, save_to_file)
 
