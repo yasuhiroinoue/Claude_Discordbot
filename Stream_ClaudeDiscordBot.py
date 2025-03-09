@@ -79,19 +79,26 @@ async def send_long_message(message_system, text, max_length):
         start = end
 
 
-async def save_response_as_file_and_send(message, response_text):
+async def save_response_as_file_and_send(message, response_text, is_thinking=False):
     """Saves response as a file and sends it with a preview."""
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"claude_response_{timestamp}.md"
+    file_type = "thinking" if is_thinking else "response"
+    filename = f"claude_{file_type}_{timestamp}.md"
     file = discord.File(io.StringIO(response_text), filename=filename)
-    await message.channel.send(f"💾 Here's your response as a file:", file=file)
+    
+    if is_thinking:
+        await message.channel.send(f"💭 Here's my thinking process as a file:", file=file)
+    else:
+        await message.channel.send(f"💾 Here's my response as a file:", file=file)
 
+    # The preview section is common
     preview_lines = response_text.split('\n')[:5]
     preview = '\n'.join(preview_lines)
     if len(preview_lines) >= 5:
         preview += "\n..."
     if preview.strip():
-        await message.channel.send(f"📝 Preview:\n```\n{preview}\n```")
+        preview_label = "Thinking preview:" if is_thinking else "Response preview:"
+        await message.channel.send(f"📝 {preview_label}\n```\n{preview}\n```")
 
 
 def clean_message(input_string):
@@ -147,7 +154,7 @@ async def generate_response(message_text):
     thinking_output = ""
     response_output = ""
     
-    # Stream APIを使用してレスポンスを受け取る
+    # Receive responses using the Stream API
     async with anthropic.messages.stream(
         model=LLM_MODEL,
         max_tokens=MAX_TOKEN,
@@ -156,34 +163,35 @@ async def generate_response(message_text):
     ) as stream:
         async for event in stream:
             if event.type == "content_block_start":
-                # ブロック開始の記録（デバッグ目的で必要な場合）
+                # Record block start (if needed for debugging purposes)
                 pass
             elif event.type == "content_block_delta":
                 if event.delta.type == "thinking_delta":
-                    # 思考過程を蓄積
+                    # Accumulate the thinking process
                     thinking_output += event.delta.thinking
                     #For debugging purposes, you can print the thinking process
                     # print(f"{event.delta.thinking}", end="", flush=True)
                 elif event.delta.type == "text_delta":
-                    # テキストレスポンスを蓄積
+                    # Accumulate the text response
                     response_output += event.delta.text
             elif event.type == "content_block_stop":
-                # ブロック終了の記録（デバッグ目的で必要な場合）
+                # Record block end (if needed for debugging purposes)
                 pass
     
-    # 思考過程を使う場合はここでログに記録したり保存したりできる
-    # ログレベルでの記録例: logging.debug(f"Thinking process: {thinking_output[:100]}...")
+    # If using the thinking process, you can log or save it here
+    # Example of logging: logging.debug(f"Thinking process: {thinking_output[:100]}...")
     
-    # 完成したレスポンスを返す
+    # Return the completed response
     return thinking_output, response_output
 
 
-async def send_response(message, response_text, save_to_file):
+async def send_response(message, response_text, save_to_file, is_thinking=False):
     """Common logic for sending responses"""
     if save_to_file:
-        await save_response_as_file_and_send(message, response_text)
+        await save_response_as_file_and_send(message, response_text, is_thinking)
     else:
-        await send_long_message(message, response_text, MAX_DISCORD_LENGTH)
+        prefix = "💭 My thinking: " if is_thinking else ""
+        await send_long_message(message, prefix + response_text, MAX_DISCORD_LENGTH)
 
 
 async def download_attachment(attachment):
@@ -246,8 +254,10 @@ async def process_attachment(message, attachment, cleaned_text, save_to_file):
     formatted_history = get_history(message.author.id)
     thinking_text, response_text = await generate_response(formatted_history)
     update_history(message.author.id, response_text, "assistant")
-    await send_response(message, thinking_text, True)
-    await send_response(message, response_text, save_to_file)
+
+
+    await send_response(message, thinking_text, True, is_thinking=True)
+    await send_response(message, response_text, save_to_file, is_thinking=False)
 
 
 async def process_text(message, cleaned_text, save_to_file=False):
@@ -262,8 +272,8 @@ async def process_text(message, cleaned_text, save_to_file=False):
     formatted_history = get_history(message.author.id)
     thinking_text, response_text = await generate_response(formatted_history)
     update_history(message.author.id, response_text, "assistant")
-    await send_response(message, thinking_text, True)
-    await send_response(message, response_text, save_to_file)
+    await send_response(message, thinking_text, True, is_thinking=True)
+    await send_response(message, response_text, save_to_file, is_thinking=False)
 
 
 @bot.event
