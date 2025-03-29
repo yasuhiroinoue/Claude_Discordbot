@@ -9,6 +9,7 @@ from PIL import Image
 import io
 import base64
 import datetime
+import json
 
 # Load environment variables
 load_dotenv()
@@ -26,8 +27,69 @@ MAX_IMAGE_SIZE_MB = 1
 
 # Initialize
 anthropic = AsyncAnthropicVertex(region=GCP_REGION, project_id=GCP_PROJECT_ID)
-bot = commands.Bot(command_prefix="!", intents=discord.Intents.default())
+intents = discord.Intents.default()
+bot = commands.Bot(command_prefix="!", intents=intents)
 message_history = {}
+
+# グラフィックレコーディング用のテンプレート
+GRAPHIC_RECORDING_TEMPLATE = """
+# グラフィックレコーディング風インフォグラフィック変換プロンプト
+## 目的
+  以下の内容を、超一流デザイナーが作成したような、日本語で完璧なグラフィックレコーディング風のHTMLインフォグラフィックに変換してください。情報設計とビジュアルデザインの両面で最高水準を目指します
+  手書き風の図形やアイコンを活用して内容を視覚的に表現します。
+## デザイン仕様
+### 1. カラースキーム
+```
+  <palette>
+  <color name='ファッション-1' rgb='593C47' r='89' g='59' b='70' />
+  <color name='ファッション-2' rgb='F2E63D' r='242' g='230' b='60' />
+  <color name='ファッション-3' rgb='F2C53D' r='242' g='196' b='60' />
+  <color name='ファッション-4' rgb='F25C05' r='242' g='91' b='4' />
+  <color name='ファッション-5' rgb='F24405' r='242' g='68' b='4' />
+  </palette>
+```
+### 2. グラフィックレコーディング要素
+- 左上から右へ、上から下へと情報を順次配置
+- 日本語の手書き風フォントの使用（Yomogi, Zen Kurenaido, Kaisei Decol）
+- 手描き風の囲み線、矢印、バナー、吹き出し
+- テキストと視覚要素（アイコン、シンプルな図形）の組み合わせ
+- キーワードの強調（色付き下線、マーカー効果）
+- 関連する概念を線や矢印で接続
+- 絵文字やアイコンを効果的に配置（✏️📌📝🔍📊など）
+### 3. タイポグラフィ
+  - タイトル：32px、グラデーション効果、太字
+  - サブタイトル：16px、#475569
+  - セクション見出し：18px、#1e40af、アイコン付き
+  - 本文：14px、#334155、行間1.4
+  - フォント指定：
+    ```html
+    <style>
+    
+@import
+ url('https://fonts.googleapis.com/css2?family=Kaisei+Decol&family=Yomogi&family=Zen+Kurenaido&display=swap');
+    </style>
+    ```
+### 4. レイアウト
+  - ヘッダー：左揃えタイトル＋右揃え日付/出典
+  - 3カラム構成：左側33%、中央33%、右側33%
+  - カード型コンポーネント：白背景、角丸12px、微細シャドウ
+  - セクション間の適切な余白と階層構造
+  - 適切にグラスモーフィズムを活用
+  - 横幅は100%にして
+## グラフィックレコーディング表現技法
+- テキストと視覚要素のバランスを重視
+- キーワードを囲み線や色で強調
+- 簡易的なアイコンや図形で概念を視覚化
+- 数値データは簡潔なグラフや図表で表現
+- 接続線や矢印で情報間の関係性を明示
+- 余白を効果的に活用して視認性を確保
+## 全体的な指針
+- 読み手が自然に視線を移動できる配置
+- 情報の階層と関連性を視覚的に明確化
+- 手書き風の要素で親しみやすさを演出
+- 視覚的な記憶に残るデザイン
+- フッターに出典情報を明記
+"""
 
 ext_to_mime = {
     '.png': "image/png",
@@ -276,9 +338,226 @@ async def process_text(message, cleaned_text, save_to_file=False):
     await send_response(message, response_text, save_to_file, is_thinking=False)
 
 
+# グラフィックレコーディングのプロンプトを作成
+def create_graphic_recording_prompt(user_prompt, with_file=False):
+    """グラフィックレコーディング用のプロンプトを作成"""
+    base_prompt = GRAPHIC_RECORDING_TEMPLATE
+
+    if with_file:
+        file_instruction = f"""
+## 変換する文章/記事
+添付されたPDFファイルを分析し、その内容を理解してください。以下のプロンプトに基づいて、PDFの内容をグラフィックレコーディングとしてまとめてください:
+{user_prompt}
+
+出力形式：完全なHTMLコードで返してください。```html ... ```の形式で返してください。HTMLにはすべてのスタイルを含め、外部リソースへの依存がないようにしてください。
+"""
+        return base_prompt + file_instruction
+    else:
+        text_instruction = f"""
+## 変換する文章/記事
+以下のプロンプトに基づいて、グラフィックレコーディングを作成してください:
+{user_prompt}
+これまでの会話履歴も考慮に入れてください。
+
+出力形式：完全なHTMLコードで返してください。```html ... ```の形式で返してください。HTMLにはすべてのスタイルを含め、外部リソースへの依存がないようにしてください。
+"""
+        return base_prompt + text_instruction
+
+
+# グラフィックレコーディング処理関数
+async def process_graphic_recording(message, prompt, attachment=None):
+    """グラフィックレコーディングを生成する関数"""
+    await message.add_reaction('📊')  # リアクションを追加してコマンド受付を示す
+    
+    async with message.channel.typing():
+        if attachment:
+            # 添付ファイルがある場合の処理
+            file_extension = os.path.splitext(attachment.filename.lower())[1]
+            mime_type = ext_to_mime.get(file_extension)
+            
+            if not mime_type:
+                await message.channel.send(f"🗑️ サポートされていないファイル形式です。")
+                return
+            
+            file_data = await download_attachment(attachment)
+            if file_data is None:
+                await message.channel.send(f'ファイルのダウンロードに失敗しました: {attachment.filename}')
+                return
+            
+            # PDFファイルの処理
+            if file_extension == '.pdf':
+                encoded_data = base64.b64encode(file_data).decode("utf-8")
+                enhanced_prompt = create_graphic_recording_prompt(prompt, with_file=True)
+                
+                content = [
+                    {"type": "text", "text": enhanced_prompt},
+                    {"type": "document", "source": {"type": "base64", "media_type": mime_type, "data": encoded_data}}
+                ]
+                
+                update_history(message.author.id, content, 'user')
+                formatted_history = get_history(message.author.id)
+                thinking_text, response_text = await generate_response(formatted_history)
+                update_history(message.author.id, response_text, "assistant")
+                
+                # HTMLの抽出と処理
+                await process_html_response(message, response_text)
+            else:
+                await message.channel.send(f"グラフィックレコーディングにはPDFファイルのみ対応しています。")
+        else:
+            # テキストのみの処理
+            enhanced_prompt = create_graphic_recording_prompt(prompt, with_file=False)
+            update_history(message.author.id, enhanced_prompt, 'user')
+            formatted_history = get_history(message.author.id)
+            thinking_text, response_text = await generate_response(formatted_history)
+            update_history(message.author.id, response_text, "assistant")
+            
+            # HTMLの抽出と処理
+            await process_html_response(message, response_text)
+
+
+async def process_html_response(message, response_text):
+    """HTMLレスポンスを処理してDiscordに送信する関数"""
+    try:
+        # HTMLコードを抽出
+        html_match = re.search(r'```html\s*([\s\S]*?)\s*```', response_text)
+        if not html_match:
+            # HTML形式でない場合は通常のテキストとして送信
+            await message.channel.send("グラフィックレコーディングの生成に失敗しました。HTMLコードが見つかりません。")
+            await send_long_message(message, response_text, MAX_DISCORD_LENGTH)
+            return
+            
+        html_code = html_match.group(1)
+        
+        # HTMLをファイルとして保存
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"graphic_recording_{timestamp}.html"
+        
+        # HTMLファイルを作成して送信
+        html_file = discord.File(io.StringIO(html_code), filename=filename)
+        await message.channel.send(f"🎨 グラフィックレコーディングが完成しました！", file=html_file)
+        
+        # Embedとしても表示
+        await send_graphic_recording_preview(message, html_code, response_text)
+        
+    except Exception as e:
+        await message.channel.send(f"HTMLの処理中にエラーが発生しました: {e}")
+        await send_long_message(message, response_text, MAX_DISCORD_LENGTH)
+
+
+async def send_graphic_recording_preview(message, html_code, full_response):
+    """グラフィックレコーディングのプレビューをEmbed形式で表示"""
+    try:
+        # タイトルを抽出
+        title_match = re.search(r'<h1[^>]*>(.*?)<\/h1>', html_code, re.DOTALL)
+        title = title_match.group(1) if title_match else "グラフィックレコーディング"
+        title = re.sub(r'<[^>]+>', '', title)  # HTMLタグを削除
+        
+        # 説明を抽出（最初の段落またはdivの内容）
+        desc_match = re.search(r'<p[^>]*>(.*?)<\/p>|<div[^>]*>(.*?)<\/div>', html_code, re.DOTALL)
+        description = desc_match.group(1) if desc_match and desc_match.group(1) else desc_match.group(2) if desc_match else "内容のプレビュー"
+        
+        # HTML要素のタグを削除してプレーンテキスト化
+        description = re.sub(r'<[^>]+>', '', description)
+        # Discordのembedの説明は最大4096文字まで
+        description = description[:2000] + "..." if len(description) > 2000 else description
+        
+        # Embedを作成
+        embed = discord.Embed(
+            title=title[:256],  # タイトルは256文字まで
+            description=description,
+            color=0xF25C05  # テンプレートの「ファッション-4」カラー
+        )
+        
+        # キーポイントを抽出（リスト要素など）
+        list_items = re.findall(r'<li[^>]*>(.*?)<\/li>', html_code, re.DOTALL)
+        if list_items:
+            # 制限内に収まるようにキーポイントを取得
+            key_points = []
+            points_text = ""
+            for item in list_items:
+                plain_text = re.sub(r'<[^>]+>', '', item).strip()
+                if plain_text:
+                    new_point = f"• {plain_text}\n"
+                    # フィールド値の制限は1024文字
+                    if len(points_text + new_point) > 1000:  # 余裕を持たせる
+                        points_text += "..."
+                        break
+                    points_text += new_point
+                    key_points.append(plain_text)
+            
+            if points_text:
+                embed.add_field(
+                    name="🔑 キーポイント",
+                    value=points_text[:1024],  # 確実に制限内に収める
+                    inline=False
+                )
+        
+        # 見出しを抽出
+        headings = re.findall(r'<h[2-4][^>]*>(.*?)<\/h[2-4]>', html_code, re.DOTALL)
+        if headings:
+            # 制限内に収まるように見出しを取得
+            headings_text = ""
+            processed_headings = []
+            
+            for h in headings:
+                plain_heading = re.sub(r'<[^>]+>', '', h).strip()
+                if plain_heading:
+                    new_heading = f"📌 {plain_heading}\n"
+                    # フィールド値の制限は1024文字
+                    if len(headings_text + new_heading) > 1000:  # 余裕を持たせる
+                        headings_text += "..."
+                        break
+                    headings_text += new_heading
+                    processed_headings.append(plain_heading)
+            
+            if headings_text:
+                embed.add_field(
+                    name="📋 セクション",
+                    value=headings_text[:1024],  # 確実に制限内に収める
+                    inline=False
+                )
+        
+        # フッター
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        embed.set_footer(text=f"Graphic Recording | {timestamp}")
+        
+        await message.channel.send(embed=embed)
+        
+    except Exception as e:
+        await message.channel.send(f"プレビューの作成中にエラーが発生しました: {str(e)}")
+        # HTML全体をプレビューとして送信せず、エラーのみを表示
+
+
 @bot.event
 async def on_ready():
     print(f"Claude Bot Logged in as {bot.user}")
+
+
+# コマンドとして!saveを実装
+@bot.command(name='save')
+async def save_command(ctx, *, content=None):
+    """Save the response as a file."""
+    if not content:
+        await ctx.send("Please provide text after the !save command.")
+        return
+    
+    cleaned_text = clean_message(content)
+    async with ctx.typing():
+        if ctx.message.attachments:
+            for attachment in ctx.message.attachments:
+                await process_attachment(ctx.message, attachment, cleaned_text, True)
+                break  # Process only the first attachment
+        else:
+            await process_text(ctx.message, cleaned_text, True)
+
+
+# コマンドとして!graを実装
+@bot.command(name='gra')
+async def gra_command(ctx, *, prompt=None):
+    """Generate a graphic recording based on the prompt."""
+    prompt = prompt or ""
+    attachment = ctx.message.attachments[0] if ctx.message.attachments else None
+    await process_graphic_recording(ctx.message, prompt, attachment)
 
 
 @bot.event
@@ -290,20 +569,19 @@ async def on_message(message):
         await message.channel.send(f'{bot.user}です')
         return
     
-    if bot.user.mentioned_in(message) or isinstance(message.channel, discord.DMChannel):
-        cleaned_text = clean_message(message.content)
-        save_to_file = False
-        if cleaned_text.startswith("!save "):
-            save_to_file = True
-            cleaned_text = cleaned_text.replace("!save ", "", 1)
+    # ボットコマンドの処理
+    await bot.process_commands(message)
 
+    # メンションまたはDMの場合は応答（!で始まるコマンドを除く）
+    if (bot.user.mentioned_in(message) or isinstance(message.channel, discord.DMChannel)) and not message.content.startswith('!'):
+        cleaned_text = clean_message(message.content)
         async with message.channel.typing():
             if message.attachments:
                 for attachment in message.attachments:
-                    await process_attachment(message, attachment, cleaned_text, save_to_file)
+                    await process_attachment(message, attachment, cleaned_text, False)
                     break  # Process only the first attachment
             else:
-                await process_text(message, cleaned_text, save_to_file)
+                await process_text(message, cleaned_text, False)
 
 
 bot.run(DISCORD_BOT_TOKEN)
