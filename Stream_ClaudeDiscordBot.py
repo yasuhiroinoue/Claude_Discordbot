@@ -345,8 +345,8 @@ def create_graphic_recording_prompt(user_prompt, with_file=False):
 
     if with_file:
         file_instruction = f"""
-## 変換する文章/記事
-添付されたPDFファイルを分析し、その内容を理解してください。以下のプロンプトに基づいて、PDFの内容をグラフィックレコーディングとしてまとめてください:
+## 変換する内容
+添付されたファイルを分析し、その内容を理解してください。以下のプロンプトに基づいて、ファイルの内容をグラフィックレコーディングとしてまとめてください:
 {user_prompt}
 
 出力形式：完全なHTMLコードで返してください。```html ... ```の形式で返してください。HTMLにはすべてのスタイルを含め、外部リソースへの依存がないようにしてください。
@@ -384,25 +384,52 @@ async def process_graphic_recording(message, prompt, attachment=None):
                 await message.channel.send(f'ファイルのダウンロードに失敗しました: {attachment.filename}')
                 return
             
-            # PDFファイルの処理
-            if file_extension == '.pdf':
+            # ファイルタイプに応じた処理
+            enhanced_prompt = create_graphic_recording_prompt(prompt, with_file=True)
+            
+            if file_extension in ['.png', '.jpg', '.jpeg', '.gif', '.webp']:
+                # 画像ファイルの処理
+                resized_image_stream = resize_image(file_data, file_extension)
+                encoded_data = base64.b64encode(resized_image_stream.getvalue()).decode("utf-8")
+                content = [
+                    {"type": "text", "text": enhanced_prompt},
+                    {"type": "image", "source": {"type": "base64", "media_type": mime_type, "data": encoded_data}}
+                ]
+            elif file_extension == '.pdf':
+                # PDFファイルの処理
                 encoded_data = base64.b64encode(file_data).decode("utf-8")
-                enhanced_prompt = create_graphic_recording_prompt(prompt, with_file=True)
-                
                 content = [
                     {"type": "text", "text": enhanced_prompt},
                     {"type": "document", "source": {"type": "base64", "media_type": mime_type, "data": encoded_data}}
                 ]
-                
-                update_history(message.author.id, content, 'user')
-                formatted_history = get_history(message.author.id)
-                thinking_text, response_text = await generate_response(formatted_history)
-                update_history(message.author.id, response_text, "assistant")
-                
-                # HTMLの抽出と処理
-                await process_html_response(message, response_text)
             else:
-                await message.channel.send(f"グラフィックレコーディングにはPDFファイルのみ対応しています。")
+                # テキストベースのファイル処理
+                try:
+                    text_data = file_data.decode('utf-8', errors='replace')
+                    file_info = (
+                        f"## File Information\n"
+                        f"- Name: `{attachment.filename}`\n"
+                        f"- Size: {len(text_data)} characters\n"
+                        f"- Type: {mime_type}\n\n"
+                    )
+                    full_prompt = f"{enhanced_prompt}\n\n{file_info}{text_data}"
+                    content = full_prompt
+                except:
+                    await message.channel.send(f"このファイル形式は処理できません。")
+                    return
+            
+            # 共通の処理部分
+            if isinstance(content, list):
+                update_history(message.author.id, content, 'user')
+            else:
+                update_history(message.author.id, content, 'user')
+                
+            formatted_history = get_history(message.author.id)
+            thinking_text, response_text = await generate_response(formatted_history)
+            update_history(message.author.id, response_text, "assistant")
+            
+            # HTMLの抽出と処理
+            await process_html_response(message, response_text)
         else:
             # テキストのみの処理
             enhanced_prompt = create_graphic_recording_prompt(prompt, with_file=False)
