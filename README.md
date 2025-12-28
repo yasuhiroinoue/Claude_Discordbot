@@ -92,7 +92,10 @@ The bot uses Python's standard `mimetypes` module to automatically detect file t
     With the setup complete, you can start the bot using:
 
     ```bash
-    python ClaudeDiscordBot.py
+    python Stream_ClaudeDiscordBot.py
+    ```
+
+    *Note: `ClaudeDiscordBot.py` has been deprecated and renamed to `ClaudeDiscordBot_deprecated.py`. Please use `Stream_ClaudeDiscordBot.py` for the latest features.*
     ```
 
 ## Usage
