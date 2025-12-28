@@ -67,14 +67,20 @@ The bot uses Python's standard `mimetypes` module to automatically detect file t
 
 3.  **Configure Environment Variables**
 
-    Create a `.env` file in the root directory of the project and populate it with the necessary environment variables:
+    Create a `.env` file in the root directory of the project. You can copy the provided example file:
+
+    ```bash
+    cp .env.example .env
+    ```
+
+    Then, open `.env` and populate it with the necessary environment variables:
 
     ```
-    DISCORD_BOT_TOKEN=<Your Discord Bot Token>
-    MAX_HISTORY=<Maximum Number of Message Pairs to Remember>
-    GCP_REGION=<Google Cloud Platform Region>
-    GCP_PROJECT_ID=<Your GCP Project ID>
-    MODEL=<The model name of VertexAI>
+    DISCORD_BOT_TOKEN=your_discord_bot_token_here
+    GCP_REGION=us-central1
+    GCP_PROJECT_ID=your_gcp_project_id
+    MAX_HISTORY=10
+    MODEL=claude-sonnet-4-5@20250929
     ```
 
     Replace the placeholders with your actual information.  `MAX_HISTORY` refers to the number of *pairs* of user/assistant messages to store.  `MODEL` is the name of the Vertex AI model to use (e.g., `claude-sonnet-4-5@20250929`).
