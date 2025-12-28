@@ -77,7 +77,7 @@ The bot uses Python's standard `mimetypes` module to automatically detect file t
 
     ```
     DISCORD_BOT_TOKEN=your_discord_bot_token_here
-    GCP_REGION=us-central1
+    GCP_REGION=global
     GCP_PROJECT_ID=your_gcp_project_id
     MAX_HISTORY=10
     MODEL=claude-sonnet-4-5@20250929
