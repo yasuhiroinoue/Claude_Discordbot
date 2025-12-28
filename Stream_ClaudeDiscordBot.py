@@ -10,6 +10,7 @@ import io
 import base64
 import datetime
 import json
+import mimetypes
 
 # Load environment variables
 load_dotenv()
@@ -28,6 +29,7 @@ MAX_IMAGE_SIZE_MB = 1
 # Initialize
 anthropic = AsyncAnthropicVertex(region=GCP_REGION, project_id=GCP_PROJECT_ID)
 intents = discord.Intents.default()
+intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 message_history = {}
 
@@ -91,40 +93,32 @@ GRAPHIC_RECORDING_TEMPLATE = """
 - フッターに出典情報を明記
 """
 
-ext_to_mime = {
-    '.png': "image/png",
-    '.jpg': "image/jpeg",
-    '.jpeg': "image/jpeg",
-    '.gif': "image/gif",
-    '.webp': "image/webp",
-    '.pdf': "application/pdf",
-    '.txt': "text/plain",
-    '.md': "text/markdown",
-    '.csv': "text/csv",
-    '.json': "application/json",
-    '.xml': "application/xml",
-    '.html': "text/html",
-    '.ini': "text/plain",
-    '.log': "text/plain",
-    '.yaml': "text/yaml",
-    '.yml': "text/yaml",
-    '.c': "text/x-c",
-    '.h': "text/x-c",
-    '.cpp': "text/x-c++",
-    '.hpp': "text/x-c++",
-    '.py': "text/x-python",
-    '.rs': "text/x-rust",
-    '.js': "text/javascript",
-    '.cs': "text/x-csharp",
-    '.php': "text/x-php",
-    '.rb': "text/x-ruby",
-    '.pl': "text/x-perl",
-    '.pm': "text/x-perl",
-    '.swift': "text/x-swift",
-    '.r': "text/x-r",
-    '.R': "text/x-r",
-    '.go': "text/x-go"
+# Additional text extensions that mimetypes might miss or strictly type
+TEXT_EXTENSIONS = {
+    '.md', '.csv', '.xml', '.html', '.ini', '.log', '.yaml', '.yml', '.conf', '.env',
+    '.c', '.h', '.cpp', '.hpp', '.py', '.rs', '.js', '.ts', '.cs', '.php', '.rb',
+    '.pl', '.pm', '.swift', '.r', '.R', '.go', '.kt', '.java', '.lua', '.sql', '.sh', '.bat'
 }
+
+def get_mime_type(filename):
+    """Determine the MIME type of a file."""
+    # Initialize mimetypes if not already done
+    if not mimetypes.inited:
+        mimetypes.init()
+        
+    ext = os.path.splitext(filename.lower())[1]
+    mime_type, _ = mimetypes.guess_type(filename)
+    
+    # Trust mimetypes for common media types
+    if mime_type:
+        return mime_type
+        
+    # Fallback/Override for code and text files
+    if ext in TEXT_EXTENSIONS or ext == '.txt':
+        return 'text/plain'
+        
+    return None
+
 
 
 async def send_long_message(message_system, text, max_length):
@@ -265,58 +259,90 @@ async def download_attachment(attachment):
             return await resp.read()
 
 
-async def process_attachment(message, attachment, cleaned_text, save_to_file):
-    """Process different types of attachments with a unified approach"""
-    file_extension = os.path.splitext(attachment.filename.lower())[1]
-    mime_type = ext_to_mime.get(file_extension)
+async def process_message_with_attachments(message, attachments, cleaned_text, save_to_file):
+    """Process a message with multiple attachments"""
+    content = []
     
-    if not mime_type:
-        supported_extensions = ', '.join(ext_to_mime.keys())
-        await message.channel.send(f"🗑️ Unsupported file extension. Supported extensions are: {supported_extensions}")
-        return
-    
-    file_data = await download_attachment(attachment)
-    if file_data is None:
-        await message.channel.send(f'Unable to download the file: {attachment.filename}')
-        return
-    
-    # Type-specific processing
-    if file_extension in ['.png', '.jpg', '.jpeg', '.gif', '.webp']:
-        await message.add_reaction('🎨')
-        resized_image_stream = resize_image(file_data, file_extension)
-        encoded_data = base64.b64encode(resized_image_stream.getvalue()).decode("utf-8")
-        content = [
-            {"type": "text", "text": cleaned_text if cleaned_text else 'What is this a picture of?'},
-            {"type": "image", "source": {"type": "base64", "media_type": mime_type, "data": encoded_data}}
-        ]
-    elif file_extension in ['.pdf']:
-        await message.add_reaction('📄')
-        encoded_data = base64.b64encode(file_data).decode("utf-8")
-        content = [
-            {"type": "text", "text": cleaned_text if cleaned_text else 'Explain this pdf'},
-            {"type": "document", "source": {"type": "base64", "media_type": mime_type, "data": encoded_data}}
-        ]
-    else:
-        await message.add_reaction('📄')
-        text_data = file_data.decode('utf-8', errors='replace')
-        file_info = (
-            f"## File Information\n"
-            f"- Name: `{attachment.filename}`\n"
-            f"- Size: {len(text_data)} characters\n"
-            f"- Type: {mime_type}\n\n"
-        )
-        combined_text = f"{cleaned_text}\n\n{file_info}{text_data}" if cleaned_text else f"{file_info}{text_data}"
+    # Add the text content first if it exists
+    if cleaned_text:
+        content.append({"type": "text", "text": cleaned_text})
+
+    # Validation loop
+    for attachment in attachments:
+        mime_type = get_mime_type(attachment.filename)
         
-        # combined_text = f"{cleaned_text}\n{text_data}" if cleaned_text else text_data
-        await process_text(message, combined_text, save_to_file)
+        if not mime_type:
+            # Simple warning for now, listing all might be too long with dynamic lookup
+            await message.channel.send(f"🗑️ Unsupported file type/extension: {attachment.filename}")
+            return # Stop processing if any file is invalid
+
+    # Processing loop
+    for attachment in attachments:
+        file_extension = os.path.splitext(attachment.filename.lower())[1]
+        mime_type = get_mime_type(attachment.filename)
+        
+        file_data = await download_attachment(attachment)
+        if file_data is None:
+            await message.channel.send(f'Unable to download the file: {attachment.filename}')
+            return
+
+        if mime_type.startswith('image/'):
+            await message.add_reaction('🎨')
+            resized_image_stream = resize_image(file_data, file_extension)
+            encoded_data = base64.b64encode(resized_image_stream.getvalue()).decode("utf-8")
+            content.append({
+                "type": "image", 
+                "source": {"type": "base64", "media_type": mime_type, "data": encoded_data}
+            })
+        elif mime_type == 'application/pdf':
+            await message.add_reaction('📄')
+            encoded_data = base64.b64encode(file_data).decode("utf-8")
+            content.append({
+                "type": "document", 
+                "source": {"type": "base64", "media_type": mime_type, "data": encoded_data}
+            })
+        else:
+            # Text based files (caught by get_mime_type falling back to text/plain or known extensions)
+            await message.add_reaction('📄')
+
+            text_data = file_data.decode('utf-8', errors='replace')
+            file_info = (
+                f"\n## File Information\n"
+                f"- Name: `{attachment.filename}`\n"
+                f"- Size: {len(text_data)} characters\n"
+                f"- Type: {mime_type}\n\n"
+            )
+            # Add as a text block
+            content.append({
+                "type": "text",
+                "text": f"{file_info}{text_data}"
+            })
+
+    # If no content (e.g. empty message with no valid attachments), do nothing
+    if not content:
         return
+
+    # If the message only contains explicit text and no other content was added (no attachments processed),
+    # process_text would have been better, but this functions works too if we ensure format is correct.
+    # However, if content is just one text block, it's effectively the same as process_text logic 
+    # but passed as list. content is list of blocks.
     
-    # Common processing for image and PDF files
+    # If content has no text block at start (cleaned_text was empty) but has images,
+    # we might want to add a default prompt if it's just images?
+    # Existing logic had: "What is this a picture of?"
+    
+    has_text = any(block['type'] == 'text' for block in content)
+    if not has_text:
+        # Check if we have images/pdfs
+        has_media = any(block['type'] in ['image', 'document'] for block in content)
+        if has_media:
+             # Add default prompt as first block
+             content.insert(0, {"type": "text", "text": "What is this content?"})
+
     update_history(message.author.id, content, 'user')
     formatted_history = get_history(message.author.id)
     thinking_text, response_text = await generate_response(formatted_history)
     update_history(message.author.id, response_text, "assistant")
-
 
     await send_response(message, thinking_text, True, is_thinking=True)
     await send_response(message, response_text, save_to_file, is_thinking=False)
@@ -373,7 +399,7 @@ async def process_graphic_recording(message, prompt, attachment=None):
         if attachment:
             # 添付ファイルがある場合の処理
             file_extension = os.path.splitext(attachment.filename.lower())[1]
-            mime_type = ext_to_mime.get(file_extension)
+            mime_type = get_mime_type(attachment.filename)
             
             if not mime_type:
                 await message.channel.send(f"🗑️ サポートされていないファイル形式です。")
@@ -387,7 +413,7 @@ async def process_graphic_recording(message, prompt, attachment=None):
             # ファイルタイプに応じた処理
             enhanced_prompt = create_graphic_recording_prompt(prompt, with_file=True)
             
-            if file_extension in ['.png', '.jpg', '.jpeg', '.gif', '.webp']:
+            if mime_type.startswith('image/'):
                 # 画像ファイルの処理
                 resized_image_stream = resize_image(file_data, file_extension)
                 encoded_data = base64.b64encode(resized_image_stream.getvalue()).decode("utf-8")
@@ -395,7 +421,7 @@ async def process_graphic_recording(message, prompt, attachment=None):
                     {"type": "text", "text": enhanced_prompt},
                     {"type": "image", "source": {"type": "base64", "media_type": mime_type, "data": encoded_data}}
                 ]
-            elif file_extension == '.pdf':
+            elif mime_type == 'application/pdf':
                 # PDFファイルの処理
                 encoded_data = base64.b64encode(file_data).decode("utf-8")
                 content = [
@@ -571,9 +597,7 @@ async def save_command(ctx, *, content=None):
     cleaned_text = clean_message(content)
     async with ctx.typing():
         if ctx.message.attachments:
-            for attachment in ctx.message.attachments:
-                await process_attachment(ctx.message, attachment, cleaned_text, True)
-                break  # Process only the first attachment
+            await process_message_with_attachments(ctx.message, ctx.message.attachments, cleaned_text, True)
         else:
             await process_text(ctx.message, cleaned_text, True)
 
@@ -604,11 +628,10 @@ async def on_message(message):
         cleaned_text = clean_message(message.content)
         async with message.channel.typing():
             if message.attachments:
-                for attachment in message.attachments:
-                    await process_attachment(message, attachment, cleaned_text, False)
-                    break  # Process only the first attachment
+                await process_message_with_attachments(message, message.attachments, cleaned_text, False)
             else:
                 await process_text(message, cleaned_text, False)
 
 
-bot.run(DISCORD_BOT_TOKEN)
+if __name__ == "__main__":
+    bot.run(DISCORD_BOT_TOKEN)
