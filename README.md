@@ -96,7 +96,6 @@ The bot uses Python's standard `mimetypes` module to automatically detect file t
     ```
 
     *Note: `ClaudeDiscordBot.py` has been deprecated and renamed to `ClaudeDiscordBot_deprecated.py`. Please use `Stream_ClaudeDiscordBot.py` for the latest features.*
-    ```
 
 ## Usage
 
