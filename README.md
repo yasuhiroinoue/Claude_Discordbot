@@ -17,30 +17,16 @@ Claude Bot is a sophisticated Discord bot that leverages Google Cloud's VertexAI
 
 ## Supported File Extensions
 
-The bot supports a wide range of file formats, including:
+The bot uses Python's standard `mimetypes` module to automatically detect file types. It generally supports:
 
--   Image files: `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`
--   PDF files: `.pdf`
--   Text files: `.txt`
--   Markdown files: `.md`
--   CSV files: `.csv`
--   JSON files: `.json`
--   XML files: `.xml`
--   HTML files: `.html`
--   Configuration files: `.ini`, `.log`, `.yaml`, `.yml`
--   Source code files:
-    -   C: `.c`, `.h`
-    -   C++: `.cpp`, `.hpp`
-    -   Python: `.py`
-    -   Rust: `.rs`
-    -   JavaScript: `.js`
-    -   C#: `.cs`
-    -   PHP: `.php`
-    -   Ruby: `.rb`
-    -   Perl: `.pl`, `.pm`
-    -   Swift: `.swift`
-    -   R: `.R`, `.r`
-    -   Go: `.go`
+-   **Images**: `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`
+-   **Documents**: `.pdf`
+-   **Text/Code**: Most text-based files are automatically supported. Explicit support is added for:
+    -   **Web**: `.html`, `.css`, `.js`, `.ts`, `.php`
+    -   **Data/Config**: `.json`, `.csv`, `.xml`, `.yaml`, `.yml`, `.ini`, `.conf`, `.env`, `.sql`
+    -   **Code**: `.py`, `.c`, `.h`, `.cpp`, `.hpp`, `.rs`, `.cs`, `.rb`, `.pl`, `.pm`, `.swift`, `.r`, `.go`, `.kt`, `.java`, `.lua`
+    -   **Scripts**: `.sh`, `.bat`
+    -   **Docs**: `.md`, `.txt`
 
 ## Prerequisites
 
