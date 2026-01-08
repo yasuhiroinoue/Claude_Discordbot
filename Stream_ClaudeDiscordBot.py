@@ -12,11 +12,35 @@ import datetime
 import json
 import mimetypes
 
+import logging
+
 # Load environment variables
 load_dotenv()
 DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 GCP_REGION = os.getenv("GCP_REGION")
 GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID")
+
+# Setting for logging user IDs (for debugging)
+DEBUG_LOG_USER_IDS = os.getenv("DEBUG_LOG_USER_IDS", "False").lower() == "true"
+
+# Configure logging for user interactions
+log_formatter = logging.Formatter(
+    "%(asctime)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+)
+log_handler = logging.FileHandler("bot_usage.log", encoding="utf-8")
+log_handler.setFormatter(log_formatter)
+
+usage_logger = logging.getLogger("bot_usage")
+usage_logger.setLevel(logging.INFO)
+usage_logger.addHandler(log_handler)
+# Avoid propagating to root logger
+usage_logger.propagate = False
+
+if DEBUG_LOG_USER_IDS:
+    print("Debug mode: User ID logging is enabled")
+    print("Logging user interactions with IDs to bot_usage.log")
+else:
+    print("Production mode: User ID logging is disabled")
 
 # Constants
 MAX_HISTORY = 2 * int(os.getenv("MAX_HISTORY", "0"))
@@ -615,6 +639,13 @@ async def gra_command(ctx, *, prompt=None):
 async def on_message(message):
     if message.author == bot.user:
         return
+
+    # Log the interaction only for DMs and only if debugging is enabled
+    if isinstance(message.channel, discord.DMChannel) and DEBUG_LOG_USER_IDS:
+        channel_info = f"DM ({message.channel.id})"
+        usage_logger.info(
+            f"Processing message from User: {message.author.name} (ID: {message.author.id}) in {channel_info}"
+        )
 
     if message.mention_everyone:
         await message.channel.send(f'{bot.user}です')
