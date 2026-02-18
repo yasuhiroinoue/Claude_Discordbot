@@ -47,7 +47,7 @@ MAX_HISTORY = 2 * int(os.getenv("MAX_HISTORY", "0"))
 MAX_DISCORD_LENGTH = 2000
 LLM_MODEL = os.getenv("MODEL")
 MAX_TOKEN = 64000
-MAX_TOKEN_THINKING_BUDGET = 32000
+
 MAX_IMAGE_SIZE_MB = 1
 
 # Initialize
@@ -238,7 +238,7 @@ async def generate_response(message_text):
     async with anthropic.messages.stream(
         model=LLM_MODEL,
         max_tokens=MAX_TOKEN,
-        thinking={"type": "enabled", "budget_tokens": MAX_TOKEN_THINKING_BUDGET},
+        thinking={"type": "adaptive"},
         messages=message_text,
     ) as stream:
         async for event in stream:
