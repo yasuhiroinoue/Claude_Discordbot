@@ -164,7 +164,7 @@ async def save_response_as_file_and_send(message, response_text, is_thinking=Fal
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     file_type = "thinking" if is_thinking else "response"
     filename = f"claude_{file_type}_{timestamp}.md"
-    file = discord.File(io.StringIO(response_text), filename=filename)
+    file = discord.File(io.BytesIO(response_text.encode()), filename=filename)
     
     if is_thinking:
         await message.channel.send(f"💭 Here's my thinking process as a file:", file=file)
@@ -368,7 +368,8 @@ async def process_message_with_attachments(message, attachments, cleaned_text, s
     thinking_text, response_text = await generate_response(formatted_history)
     update_history(message.author.id, response_text, "assistant")
 
-    await send_response(message, thinking_text, True, is_thinking=True)
+    if save_to_file and thinking_text:
+        await send_response(message, thinking_text, True, is_thinking=True)
     await send_response(message, response_text, save_to_file, is_thinking=False)
 
 
@@ -384,7 +385,8 @@ async def process_text(message, cleaned_text, save_to_file=False):
     formatted_history = get_history(message.author.id)
     thinking_text, response_text = await generate_response(formatted_history)
     update_history(message.author.id, response_text, "assistant")
-    await send_response(message, thinking_text, True, is_thinking=True)
+    if save_to_file and thinking_text:
+        await send_response(message, thinking_text, True, is_thinking=True)
     await send_response(message, response_text, save_to_file, is_thinking=False)
 
 
@@ -510,7 +512,7 @@ async def process_html_response(message, response_text):
         filename = f"graphic_recording_{timestamp}.html"
         
         # HTMLファイルを作成して送信
-        html_file = discord.File(io.StringIO(html_code), filename=filename)
+        html_file = discord.File(io.BytesIO(html_code.encode()), filename=filename)
         await message.channel.send(f"🎨 グラフィックレコーディングが完成しました！", file=html_file)
         
         # Embedとしても表示
