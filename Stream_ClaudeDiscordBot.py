@@ -368,7 +368,8 @@ async def process_message_with_attachments(message, attachments, cleaned_text, s
     thinking_text, response_text = await generate_response(formatted_history)
     update_history(message.author.id, response_text, "assistant")
 
-    await send_response(message, thinking_text, True, is_thinking=True)
+    if save_to_file and thinking_text:
+        await send_response(message, thinking_text, True, is_thinking=True)
     await send_response(message, response_text, save_to_file, is_thinking=False)
 
 
@@ -384,7 +385,8 @@ async def process_text(message, cleaned_text, save_to_file=False):
     formatted_history = get_history(message.author.id)
     thinking_text, response_text = await generate_response(formatted_history)
     update_history(message.author.id, response_text, "assistant")
-    await send_response(message, thinking_text, True, is_thinking=True)
+    if save_to_file and thinking_text:
+        await send_response(message, thinking_text, True, is_thinking=True)
     await send_response(message, response_text, save_to_file, is_thinking=False)
 
 
