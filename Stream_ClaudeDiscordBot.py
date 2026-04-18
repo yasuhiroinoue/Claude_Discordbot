@@ -466,15 +466,13 @@ async def process_graphic_recording(message, prompt, attachment=None):
                     )
                     full_prompt = f"{enhanced_prompt}\n\n{file_info}{text_data}"
                     content = full_prompt
-                except:
+                except Exception as e:
+                    usage_logger.error(f"Failed to process text file {attachment.filename}: {e}")
                     await message.channel.send(f"このファイル形式は処理できません。")
                     return
-            
+
             # 共通の処理部分
-            if isinstance(content, list):
-                update_history(message.author.id, content, 'user')
-            else:
-                update_history(message.author.id, content, 'user')
+            update_history(message.author.id, content, 'user')
                 
             formatted_history = get_history(message.author.id)
             thinking_text, response_text = await generate_response(formatted_history)
