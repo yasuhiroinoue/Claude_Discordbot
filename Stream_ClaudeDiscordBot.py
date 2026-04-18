@@ -235,24 +235,27 @@ async def process_message_with_attachments(message, attachments, cleaned_text, s
     if cleaned_text:
         content.append({"type": "text", "text": cleaned_text})
 
-    # Validation loop
+    # Filter valid attachments; warn on invalid ones but continue with the rest
+    valid_attachments = []
     for attachment in attachments:
-        mime_type = get_mime_type(attachment.filename)
-        
-        if not mime_type:
-            # Simple warning for now, listing all might be too long with dynamic lookup
-            await message.channel.send(f"🗑️ Unsupported file type/extension: {attachment.filename}")
-            return # Stop processing if any file is invalid
+        if get_mime_type(attachment.filename):
+            valid_attachments.append(attachment)
+        else:
+            await message.channel.send(f"🗑️ Unsupported file type/extension, skipping: {attachment.filename}")
+
+    # If nothing usable remains (no text and no valid attachments), stop
+    if not valid_attachments and not cleaned_text:
+        return
 
     # Processing loop
-    for attachment in attachments:
+    for attachment in valid_attachments:
         file_extension = os.path.splitext(attachment.filename.lower())[1]
         mime_type = get_mime_type(attachment.filename)
-        
+
         file_data = await download_attachment(attachment)
         if file_data is None:
-            await message.channel.send(f'Unable to download the file: {attachment.filename}')
-            return
+            await message.channel.send(f'Unable to download the file, skipping: {attachment.filename}')
+            continue
 
         if mime_type.startswith('image/'):
             await message.add_reaction('🎨')
