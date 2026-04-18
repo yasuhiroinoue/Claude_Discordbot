@@ -46,6 +46,7 @@ MAX_HISTORY = 2 * int(os.getenv("MAX_HISTORY", "0"))
 MAX_DISCORD_LENGTH = 2000
 LLM_MODEL = os.getenv("MODEL")
 MAX_TOKEN = 64000
+SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT", "")
 
 MAX_IMAGE_SIZE_MB = 1
 
@@ -173,13 +174,17 @@ async def generate_response(message_text):
     thinking_output = ""
     response_output = ""
     
+    stream_kwargs = {
+        "model": LLM_MODEL,
+        "max_tokens": MAX_TOKEN,
+        "thinking": {"type": "adaptive"},
+        "messages": message_text,
+    }
+    if SYSTEM_PROMPT:
+        stream_kwargs["system"] = SYSTEM_PROMPT
+
     # Receive responses using the Stream API
-    async with anthropic.messages.stream(
-        model=LLM_MODEL,
-        max_tokens=MAX_TOKEN,
-        thinking={"type": "adaptive"},
-        messages=message_text,
-    ) as stream:
+    async with anthropic.messages.stream(**stream_kwargs) as stream:
         async for event in stream:
             if event.type == "content_block_start":
                 # Record block start (if needed for debugging purposes)
