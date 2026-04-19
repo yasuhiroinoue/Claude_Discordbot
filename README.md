@@ -83,9 +83,10 @@ The bot uses Python's standard `mimetypes` module to automatically detect file t
     MAX_HISTORY=10
     MODEL=claude-sonnet-4-6
     SYSTEM_PROMPT=
+    WEB_SEARCH_MAX_USES=0
     ```
 
-    Replace the placeholders with your actual information.  `MAX_HISTORY` refers to the number of *pairs* of user/assistant messages to store.  `MODEL` is the name of the Vertex AI model to use (e.g., `claude-sonnet-4-6` or `claude-opus-4-6`). `SYSTEM_PROMPT` is optional — set a string to customize the bot's persona/behavior, or leave empty to send no system prompt.
+    Replace the placeholders with your actual information.  `MAX_HISTORY` refers to the number of *pairs* of user/assistant messages to store.  `MODEL` is the name of the Vertex AI model to use (e.g., `claude-sonnet-4-6` or `claude-opus-4-6`). `SYSTEM_PROMPT` is optional — set a string to customize the bot's persona/behavior, or leave empty to send no system prompt. `WEB_SEARCH_MAX_USES` controls Claude's built-in web search: set to 0 to disable (default), or a positive integer to allow Claude to perform up to that many web searches per response (billed at $10 per 1,000 searches by Anthropic). Source URLs are appended to responses as a Markdown list.
 
 
 

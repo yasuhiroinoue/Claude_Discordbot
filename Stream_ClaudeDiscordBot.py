@@ -47,6 +47,7 @@ MAX_DISCORD_LENGTH = 2000
 LLM_MODEL = os.getenv("MODEL")
 MAX_TOKEN = 64000
 SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT", "")
+WEB_SEARCH_MAX_USES = int(os.getenv("WEB_SEARCH_MAX_USES", "0"))
 
 MAX_IMAGE_SIZE_MB = 1
 
@@ -182,6 +183,12 @@ async def generate_response(message_text):
     }
     if SYSTEM_PROMPT:
         stream_kwargs["system"] = SYSTEM_PROMPT
+    if WEB_SEARCH_MAX_USES > 0:
+        stream_kwargs["tools"] = [{
+            "type": "web_search_20250305",
+            "name": "web_search",
+            "max_uses": WEB_SEARCH_MAX_USES,
+        }]
 
     # Receive responses using the Stream API
     async with anthropic.messages.stream(**stream_kwargs) as stream:
@@ -201,6 +208,22 @@ async def generate_response(message_text):
             elif event.type == "content_block_stop":
                 # Record block end (if needed for debugging purposes)
                 pass
+
+        if WEB_SEARCH_MAX_USES > 0:
+            final_message = await stream.get_final_message()
+            seen_urls = {}
+            for block in final_message.content:
+                if getattr(block, "type", None) != "text":
+                    continue
+                for c in getattr(block, "citations", None) or []:
+                    url = getattr(c, "url", None)
+                    if url and url not in seen_urls:
+                        seen_urls[url] = getattr(c, "title", None) or url
+            if seen_urls:
+                sources_md = "\n\n**📚 Sources:**\n" + "\n".join(
+                    f"- [{title}]({url})" for url, title in seen_urls.items()
+                )
+                response_output += sources_md
     
     # If using the thinking process, you can log or save it here
     # Example of logging: logging.debug(f"Thinking process: {thinking_output[:100]}...")
