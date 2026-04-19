@@ -1,3 +1,4 @@
+import asyncio
 import os
 import re
 import aiohttp
@@ -12,6 +13,11 @@ import datetime
 import mimetypes
 
 import logging
+
+# Accept large scientific images (microscopy, astronomy, high-res figures).
+# Trusted-user private bot context; keep sanity via the file_data download
+# limit upstream rather than Pillow's pixel bomb check.
+Image.MAX_IMAGE_PIXELS = None
 
 # Load environment variables
 load_dotenv()
@@ -50,6 +56,8 @@ SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT", "")
 WEB_SEARCH_MAX_USES = int(os.getenv("WEB_SEARCH_MAX_USES", "0"))
 
 MAX_IMAGE_SIZE_MB = 1
+INITIAL_MAX_DIMENSION = 4096
+MIN_DIMENSION = 64
 
 # Initialize
 anthropic = AsyncAnthropicVertex(region=GCP_REGION, project_id=GCP_PROJECT_ID)
@@ -128,27 +136,41 @@ def clean_message(input_string):
 
 
 def resize_image(image_bytes, file_extension, max_size_mb=MAX_IMAGE_SIZE_MB, step=10):
-    """Resizes the image to be under the max size."""
+    """Resizes the image to be under the max size. Returns None on decode/resize failure."""
     format_map = {'.png': 'PNG', '.jpg': 'JPEG', '.jpeg': 'JPEG', '.gif': 'GIF', '.webp': 'WEBP'}
     img_format = format_map.get(file_extension.lower(), 'JPEG')
-    img = Image.open(io.BytesIO(image_bytes))
     try:
         resample_filter = Image.Resampling.LANCZOS
     except AttributeError:
         resample_filter = Image.ANTIALIAS
 
+    try:
+        img = Image.open(io.BytesIO(image_bytes))
+        # Bound peak memory for multi-hundred-Mpx images before any further
+        # processing. thumbnail() is in-place and memory-efficient (uses
+        # libjpeg draft+reduce pipeline for large JPEGs).
+        img.thumbnail((INITIAL_MAX_DIMENSION, INITIAL_MAX_DIMENSION), resample_filter)
+    except Exception as e:
+        logging.warning("Image decode failed: %s: %s", type(e).__name__, e)
+        return None
+
     img_stream = io.BytesIO()
-    while True:
-        img_stream.seek(0)
-        img_stream.truncate(0)
-        img.save(img_stream, format=img_format)
-        if img_stream.getbuffer().nbytes <= max_size_mb * 1024 * 1024:
-            break
-        width, height = img.size
-        img = img.resize(
-            (int(width * (100 - step) / 100), int(height * (100 - step) / 100)),
-            resample_filter
-        )
+    try:
+        while True:
+            img_stream.seek(0)
+            img_stream.truncate(0)
+            img.save(img_stream, format=img_format)
+            if img_stream.getbuffer().nbytes <= max_size_mb * 1024 * 1024:
+                break
+            width, height = img.size
+            new_w = int(width * (100 - step) / 100)
+            new_h = int(height * (100 - step) / 100)
+            if new_w < MIN_DIMENSION or new_h < MIN_DIMENSION:
+                break
+            img.thumbnail((new_w, new_h), resample_filter)
+    except Exception as e:
+        logging.warning("Image resize failed: %s: %s", type(e).__name__, e)
+        return None
     return img_stream
 
 
@@ -282,10 +304,20 @@ async def process_message_with_attachments(message, attachments, cleaned_text, s
 
         if mime_type.startswith('image/'):
             await message.add_reaction('🎨')
-            resized_image_stream = resize_image(file_data, file_extension)
+            # Offload to a thread: LANCZOS/thumbnail on large images can still
+            # take seconds, and blocking the asyncio loop breaks Discord's
+            # gateway heartbeat (seen as ClientConnectionResetError + reconnect).
+            resized_image_stream = await asyncio.to_thread(
+                resize_image, file_data, file_extension
+            )
+            if resized_image_stream is None:
+                await message.channel.send(
+                    f"🎨 画像デコードに失敗したためスキップ: {attachment.filename}"
+                )
+                continue
             encoded_data = base64.b64encode(resized_image_stream.getvalue()).decode("utf-8")
             content.append({
-                "type": "image", 
+                "type": "image",
                 "source": {"type": "base64", "media_type": mime_type, "data": encoded_data}
             })
         elif mime_type == 'application/pdf':
