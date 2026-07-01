@@ -159,11 +159,9 @@ def split_markdown_message(text, max_length=MAX_DISCORD_LENGTH):
     def buffered_len():
         return sum(len(l) for l in cur) + max(0, len(cur) - 1)
 
-    def room(extra_reserve=0):
-        # Chars available for one more line, leaving space to close the fence
-        # at a split (and, for a line that itself opens a fence, its future close).
-        close_reserve = (1 + fence[0]) if fence is not None else 0
-        close_reserve = max(close_reserve, extra_reserve)
+    def room(close_reserve):
+        # Chars available for one more line, keeping `close_reserve` chars free
+        # (e.g. to inject a closing fence when a split lands inside a code block).
         sep = 1 if cur else 0
         return max_length - buffered_len() - sep - close_reserve
 
@@ -178,41 +176,57 @@ def split_markdown_message(text, max_length=MAX_DISCORD_LENGTH):
         cur = [fence[1]] if fence is not None else []   # reopen on the next chunk
         has_content = False
 
-    def add_line(line, extra_reserve=0):
+    def add_line(line, close_reserve, is_marker=False):
+        # `is_marker` lines (fence open/close) don't count as real content, so a
+        # chunk holding only a fence marker is never flushed on its own (which
+        # would emit an empty code block).
         nonlocal has_content
-        if len(line) <= room(extra_reserve):
+        if len(line) <= room(close_reserve):
             cur.append(line)
-            has_content = True
+            has_content = has_content or not is_marker
             return
         if has_content:
             flush()                                 # start a fresh chunk first
-        while len(line) > room(extra_reserve):
-            r = room(extra_reserve)
+        while len(line) > room(close_reserve):
+            r = room(close_reserve)
             if r <= 0:                              # degenerate: markers exhaust budget
                 break
             cut = _cut_at(line, r)
             cur.append(line[:cut])
-            has_content = True
+            has_content = True                      # a split piece is real content
             flush()
             line = line[cut:]
         cur.append(line)
-        has_content = True
+        has_content = has_content or not is_marker
 
     for line in lines:
-        # If this line opens a fence, reserve room for its eventual close too.
         opened_now = _fence_open(line) if fence is None else None
-        extra = (1 + opened_now[0]) if opened_now else 0
-        add_line(line, extra)
-        if fence is None:
-            if opened_now:
-                fence = opened_now
-        elif _is_fence_close(line, fence[0]):
+        closing_now = fence is not None and _is_fence_close(line, fence[0])
+        if opened_now:
+            close_reserve = 1 + opened_now[0]       # reserve for its eventual close
+            is_marker = True
+        elif closing_now:
+            close_reserve = 0                       # this line IS the real close
+            is_marker = True
+        elif fence is not None:
+            close_reserve = 1 + fence[0]            # room to inject a close if we split
+            is_marker = False
+        else:
+            close_reserve = 0
+            is_marker = False
+        add_line(line, close_reserve, is_marker)
+        if opened_now:
+            fence = opened_now
+        elif closing_now:
             fence = None
 
-    # Final chunk: emit as-is. Do NOT inject a closing fence — if the original
-    # ended inside an unclosed fence, that faithfully mirrors the model output.
+    # Final chunk: emit only if it carries real content. A trailing chunk of
+    # injected markers only (reopen marker +/- real close) would render as an
+    # empty code block, so it is dropped — the content is already in prior chunks.
+    # No closing fence is injected here: an original that ends inside an unclosed
+    # fence is mirrored faithfully.
     tail = '\n'.join(cur)
-    if tail.strip():
+    if has_content and tail.strip():
         chunks.append(tail)
     return chunks
 
