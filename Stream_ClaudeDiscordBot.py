@@ -212,7 +212,10 @@ async def generate_response(message_text):
     stream_kwargs = {
         "model": LLM_MODEL,
         "max_tokens": MAX_TOKEN,
-        "thinking": {"type": "adaptive"},
+        # display="summarized" is required to receive thinking text: on Opus 4.7/4.8
+        # and Sonnet 5 the default is "omitted", which streams empty thinking_delta
+        # and would make the !save thinking file empty.
+        "thinking": {"type": "adaptive", "display": "summarized"},
         "messages": message_text,
     }
     if SYSTEM_PROMPT:
