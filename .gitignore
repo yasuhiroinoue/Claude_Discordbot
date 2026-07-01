@@ -6,6 +6,11 @@ bot_usage.log
 bot_general.log
 debug_files/
 
+# Agent files
+AGENTS.md
+CLAUDE.md
+MEMORY.md
+
 # Python cache files
 __pycache__
 
