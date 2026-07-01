@@ -1,13 +1,15 @@
-# Discord bot with Claude-4.6 (Adaptive Thinking) using Google Cloud VertexAI
+# Discord bot with Claude (Adaptive Thinking) on Google Cloud Vertex AI
 
-Claude Bot is a sophisticated Discord bot that leverages Google Cloud's VertexAI and the Claude-4.6 language model to interact with users through text, image, and PDF responses. It's designed to enhance Discord servers by providing intelligent and contextual interactions.
+Claude Bot is a sophisticated Discord bot that leverages Google Cloud's Vertex AI and the latest Claude models (e.g. Claude Opus 4.8 / Sonnet 5) to interact with users through text, image, and PDF responses. The model is configurable via the `MODEL` environment variable, so the bot can run on any Claude model available in Vertex AI. It's designed to enhance Discord servers by providing intelligent and contextual interactions.
 
 ## Features
 
-- **Advanced Text Processing**: Utilizes Claude-4.6 (Opus/Sonnet), a powerful language model, for generating meaningful text responses.
-- **Adaptive Thinking**: Uses Claude 4.6's new Adaptive Thinking mode for optimized reasoning.
+- **Advanced Text Processing**: Utilizes the latest Claude models (Opus 4.8 / Sonnet 5, selectable via the `MODEL` variable) for generating meaningful text responses.
+- **Adaptive Thinking**: Uses Claude's Adaptive Thinking mode for optimized reasoning, letting the model decide when and how much to think.
+- **Thinking Transparency**: With the `!save` command, the bot also saves Claude's summarized thinking process as a separate file (requests `display: "summarized"`, so thinking text is populated on current models).
+- **Graceful Error & Refusal Handling**: On an API error or a safety refusal, the bot notifies the user instead of sending an empty message, and never persists a failed turn to the conversation history.
 - **Image Recognition**: Can analyze and respond to images sent by users.
-- **PDF Processing**: Newly added capability to process and understand PDF documents.
+- **PDF Processing**: Can process and understand PDF documents.
 - **Supports Multiple Programming Languages**: Can process various programming language source code files and provide relevant responses.
 - **Environmentally Friendly**: Uses environment variables for secure configuration.
 - **Customizable and Scalable**: Easy to adjust settings and scale for different use cases.
@@ -31,8 +33,8 @@ The bot uses Python's standard `mimetypes` module to automatically detect file t
 
 ## Prerequisites
 
--   Python 3.8 or newer.
--   A Google Cloud account and project setup for VertexAI.
+-   Python 3.9 or newer (required by the Anthropic SDK; tested on Python 3.12).
+-   A Google Cloud account and project setup for Vertex AI.
 -   A Discord bot token.
 
 ## Installation
@@ -48,22 +50,12 @@ The bot uses Python's standard `mimetypes` module to automatically detect file t
 
 2.  **Install Required Packages**
 
-    Install the Python dependencies listed in `requirements.txt`:
+    Install the Python dependencies listed in `requirements.txt` (this includes
+    `anthropic[vertex]` for Vertex AI integration, `discord.py`, `python-dotenv`,
+    `Pillow`, and `aiohttp`):
 
     ```bash
     pip install -r requirements.txt
-    ```
-
-    Ensure `python-dotenv` and `Pillow` are installed:
-    ```bash
-    pip install python-dotenv Pillow
-    ```
-
-
-    Additionally, install the `anthropic[vertex]` package for VertexAI integration:
-
-    ```bash
-    python -m pip install -U 'anthropic[vertex]'
     ```
 
 3.  **Configure Environment Variables**
@@ -81,12 +73,12 @@ The bot uses Python's standard `mimetypes` module to automatically detect file t
     GCP_REGION=global
     GCP_PROJECT_ID=your_gcp_project_id
     MAX_HISTORY=10
-    MODEL=claude-sonnet-4-6
+    MODEL=claude-opus-4-8
     SYSTEM_PROMPT=
     WEB_SEARCH_MAX_USES=0
     ```
 
-    Replace the placeholders with your actual information.  `MAX_HISTORY` refers to the number of *pairs* of user/assistant messages to store.  `MODEL` is the name of the Vertex AI model to use (e.g., `claude-sonnet-4-6` or `claude-opus-4-6`). `SYSTEM_PROMPT` is optional — set a string to customize the bot's persona/behavior, or leave empty to send no system prompt. `WEB_SEARCH_MAX_USES` controls Claude's built-in web search: set to 0 to disable (default), or a positive integer to allow Claude to perform up to that many web searches per response (billed at $10 per 1,000 searches by Anthropic). Source URLs are appended to responses as a Markdown list.
+    Replace the placeholders with your actual information.  `MAX_HISTORY` refers to the number of *pairs* of user/assistant messages to store.  `MODEL` is the bare Vertex AI model ID to use — e.g., `claude-opus-4-8` (most capable) or `claude-sonnet-5` (balanced speed/cost); any current Claude model available in your Vertex AI project works. `SYSTEM_PROMPT` is optional — set a string to customize the bot's persona/behavior, or leave empty to send no system prompt. `WEB_SEARCH_MAX_USES` controls Claude's built-in web search: set to 0 to disable (default), or a positive integer to allow Claude to perform up to that many web searches per response (billed at $10 per 1,000 searches by Anthropic). Source URLs are appended to responses as a Markdown list.
 
 
 
@@ -108,10 +100,10 @@ Once the bot is running, it will listen for messages in all the servers it has b
 -   Sending a direct message (DM) to the bot.
 -   Uploading supported file types (images, PDFs, text-based files).
 -   **Sending multiple files**: You can attach multiple files (images, PDFs, text) in a single message. The bot will process all of them.
--   Using the `!save` command at the beginning of message to save the response as a file.
+-   Using the `!save` command at the beginning of a message to save the response as a file. When Claude produces a thinking summary, it is saved as a separate `claude_thinking_*.md` file alongside the `claude_response_*.md` file.
 
 
-The bot can process both text and images, and now PDFs, providing responses generated by Claude-4.6. You can reset the conversation history by sending `RESET` (case-insensitive) to the bot.
+The bot can process text, images, and PDFs, providing responses generated by Claude. You can reset the conversation history by sending `RESET` (case-insensitive) to the bot. If a request is refused for safety reasons or an API error occurs, the bot replies with a short notice instead of failing silently.
 
 
 ## Customization
