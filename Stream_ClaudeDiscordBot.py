@@ -5,7 +5,9 @@ import aiohttp
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
-from anthropic import AsyncAnthropicVertex
+# NOTE: the module-level name `anthropic` is later rebound to the Vertex client
+# instance, so import the error base class by name here to avoid the shadowing.
+from anthropic import AsyncAnthropicVertex, APIError
 from PIL import Image
 import io
 import base64
@@ -58,6 +60,10 @@ WEB_SEARCH_MAX_USES = int(os.getenv("WEB_SEARCH_MAX_USES", "0"))
 MAX_IMAGE_SIZE_MB = 1
 INITIAL_MAX_DIMENSION = 4096
 MIN_DIMENSION = 64
+
+# User-facing notices for failure / refusal paths
+API_ERROR_NOTICE = "⚠️ 応答の生成中にエラーが発生しました。しばらくしてから再度お試しください。"
+REFUSAL_NOTICE = "🚫 申し訳ありませんが、この要求には安全上の理由でお応えできませんでした。"
 
 # Initialize
 anthropic = AsyncAnthropicVertex(region=GCP_REGION, project_id=GCP_PROJECT_ID)
@@ -193,10 +199,16 @@ def get_history(user_id):
 
 
 async def generate_response(message_text):
-    """Generates a response using the Anthropic API with streaming."""
+    """Generates a response using the Anthropic API with streaming.
+
+    Returns (thinking_output, response_output, stop_reason). Callers must inspect
+    stop_reason: on "refusal" the (possibly partial) response_output should be
+    discarded rather than sent to the user.
+    """
     thinking_output = ""
     response_output = ""
-    
+    stop_reason = None
+
     stream_kwargs = {
         "model": LLM_MODEL,
         "max_tokens": MAX_TOKEN,
@@ -215,10 +227,7 @@ async def generate_response(message_text):
     # Receive responses using the Stream API
     async with anthropic.messages.stream(**stream_kwargs) as stream:
         async for event in stream:
-            if event.type == "content_block_start":
-                # Record block start (if needed for debugging purposes)
-                pass
-            elif event.type == "content_block_delta":
+            if event.type == "content_block_delta":
                 if event.delta.type == "thinking_delta":
                     # Accumulate the thinking process
                     thinking_output += event.delta.thinking
@@ -227,12 +236,13 @@ async def generate_response(message_text):
                 elif event.delta.type == "text_delta":
                     # Accumulate the text response
                     response_output += event.delta.text
-            elif event.type == "content_block_stop":
-                # Record block end (if needed for debugging purposes)
-                pass
+
+        # Always resolve the final message so we can inspect stop_reason (e.g.
+        # "refusal") on every request, and collect citations when web search ran.
+        final_message = await stream.get_final_message()
+        stop_reason = final_message.stop_reason
 
         if WEB_SEARCH_MAX_USES > 0:
-            final_message = await stream.get_final_message()
             seen_urls = {}
             for block in final_message.content:
                 if getattr(block, "type", None) != "text":
@@ -246,12 +256,12 @@ async def generate_response(message_text):
                     f"- [{title}]({url})" for url, title in seen_urls.items()
                 )
                 response_output += sources_md
-    
+
     # If using the thinking process, you can log or save it here
     # Example of logging: logging.debug(f"Thinking process: {thinking_output[:100]}...")
-    
+
     # Return the completed response
-    return thinking_output, response_output
+    return thinking_output, response_output, stop_reason
 
 
 async def send_response(message, response_text, save_to_file, is_thinking=False):
@@ -270,6 +280,43 @@ async def download_attachment(attachment):
             if resp.status != 200:
                 return None
             return await resp.read()
+
+
+async def _run_turn(message, user_content, save_to_file):
+    """Runs a single conversation turn and commits history only on success.
+
+    Both entry points (mention/DM via on_message and the !save command callback)
+    funnel through here, so API errors and refusals are handled in one place.
+
+    - The user turn is NOT written to history until the API call succeeds and is
+      not a refusal, so a failed or refused turn never lingers in the next request.
+    - On an Anthropic API error, the user is notified and history is left untouched.
+    - On stop_reason == "refusal", any partial output is discarded and nothing is
+      persisted.
+
+    `user_content` is a plain string (text turn) or a list of content blocks.
+    """
+    messages = get_history(message.author.id) + [{"role": "user", "content": user_content}]
+
+    try:
+        thinking_text, response_text, stop_reason = await generate_response(messages)
+    except APIError as e:
+        logging.warning("Anthropic API call failed: %s: %s", type(e).__name__, e)
+        await message.channel.send(API_ERROR_NOTICE)
+        return
+
+    if stop_reason == "refusal":
+        # Discard any partial output; do not persist user/assistant turns.
+        await message.channel.send(REFUSAL_NOTICE)
+        return
+
+    # Commit only after a successful response: user turn first, then assistant.
+    update_history(message.author.id, user_content, "user")
+    update_history(message.author.id, response_text, "assistant")
+
+    if save_to_file and thinking_text:
+        await send_response(message, thinking_text, True, is_thinking=True)
+    await send_response(message, response_text, save_to_file, is_thinking=False)
 
 
 async def process_message_with_attachments(message, attachments, cleaned_text, save_to_file):
@@ -365,14 +412,7 @@ async def process_message_with_attachments(message, attachments, cleaned_text, s
              # Add default prompt as first block
              content.insert(0, {"type": "text", "text": "What is this content?"})
 
-    update_history(message.author.id, content, 'user')
-    formatted_history = get_history(message.author.id)
-    thinking_text, response_text = await generate_response(formatted_history)
-    update_history(message.author.id, response_text, "assistant")
-
-    if save_to_file and thinking_text:
-        await send_response(message, thinking_text, True, is_thinking=True)
-    await send_response(message, response_text, save_to_file, is_thinking=False)
+    await _run_turn(message, content, save_to_file)
 
 
 async def process_text(message, cleaned_text, save_to_file=False):
@@ -383,13 +423,7 @@ async def process_text(message, cleaned_text, save_to_file=False):
         return
 
     await message.add_reaction('💬')
-    update_history(message.author.id, cleaned_text, "user")
-    formatted_history = get_history(message.author.id)
-    thinking_text, response_text = await generate_response(formatted_history)
-    update_history(message.author.id, response_text, "assistant")
-    if save_to_file and thinking_text:
-        await send_response(message, thinking_text, True, is_thinking=True)
-    await send_response(message, response_text, save_to_file, is_thinking=False)
+    await _run_turn(message, cleaned_text, save_to_file)
 
 
 @bot.event
